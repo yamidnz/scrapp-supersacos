@@ -166,11 +166,13 @@
         <label>Indicadores del período principal</label>
         <div class="kpi-row" id="statGrid"></div>
         <div class="gauge-row" id="gaugeRow" style="margin-top:14px;"></div>
+        <div id="periodTotalsRow" class="chip-row" style="margin-top:12px;"></div>
       </div>
 
       <div class="card">
         <label id="trendChartTitle">Tendencia</label>
         <div id="chartPeriodToggles" class="chip-row hidden"></div>
+        <div id="chartModeToggle" class="chip-row hidden" style="margin-top:4px;"></div>
         <details class="adv" id="chartCustomDetails">
           <summary>Ver meses específicos en el gráfico (independiente de la comparación)</summary>
           <div id="chartMonthChips" class="chip-row"></div>
@@ -260,8 +262,10 @@ const dashContent = document.getElementById('dashContent');
 const catFilter = document.getElementById('catFilter');
 const statGrid = document.getElementById('statGrid');
 const gaugeRow = document.getElementById('gaugeRow');
+const periodTotalsRow = document.getElementById('periodTotalsRow');
 const trendChartTitle = document.getElementById('trendChartTitle');
 const chartPeriodToggles = document.getElementById('chartPeriodToggles');
+const chartModeToggle = document.getElementById('chartModeToggle');
 const chartMonthChips = document.getElementById('chartMonthChips');
 const chartCustomResetBtn = document.getElementById('chartCustomResetBtn');
 const trendChartBox = document.getElementById('trendChartBox');
@@ -307,6 +311,7 @@ let periods = [ { id:'p0', label:'Principal', weeks:new Set(), totalCut:0, title
 let activePeriodId = 'p0';
 let chartVisiblePeriodIds = new Set(['p0']); // which periods show up in the trend chart — independent of comparison setup
 let chartCustomMonths = null; // Set of month keys chosen purely for chart display, independent of periods/comparison
+let trendChartMode = 'global'; // 'global' (one point per period, % total) | 'weekly' (kg/día detail across all visible periods)
 let periodSeq = 1;
 
 function normalize(s){ return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
@@ -504,7 +509,7 @@ function addComparisonPeriod(){
   chartVisiblePeriodIds.add(id);
   renderPeriodTargetRow();
   syncActivePeriodInputs();
-  renderChartPeriodToggles();
+  renderChartPeriodToggles(); renderChartModeToggle();
   renderWeekChips();
   renderDashboard();
 }
@@ -514,7 +519,7 @@ function removeComparisonPeriod(id){
   if(activePeriodId === id) activePeriodId = 'p0';
   renderPeriodTargetRow();
   syncActivePeriodInputs();
-  renderChartPeriodToggles();
+  renderChartPeriodToggles(); renderChartModeToggle();
   renderWeekChips();
   renderDashboard();
 }
@@ -744,9 +749,9 @@ function gaugeSvg(value){
     '<g transform="rotate('+rot+' 100 100)"><line x1="100" y1="100" x2="100" y2="30" stroke="#23281F" stroke-width="3" stroke-linecap="round"/></g>'+
     '<circle cx="100" cy="100" r="6" fill="#23281F"/></svg>';
 }
-function lineChartSvg(labels, data, color, unitSuffix){
-  color = color || '#3F7A56';
+function lineChartSvg(labels, data, color, unitSuffix, legend){
   unitSuffix = unitSuffix || '';
+  const colors = Array.isArray(color) ? color : data.map(() => color || '#3F7A56');
   const W = 640, H = 220, padL = 40, padR = 20, padT = 20, padB = 30;
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const maxV = Math.max(1, ...data) * 1.15;
@@ -754,20 +759,28 @@ function lineChartSvg(labels, data, color, unitSuffix){
   const stepX = data.length > 1 ? innerW / (data.length - 1) : 0;
   const toXY = (i,v) => [padL + i*stepX, padT + innerH - ((v-minV)/(maxV-minV))*innerH];
   const points = data.map((v,i) => toXY(i,v));
-  const path = points.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
-  const area = path + ' L ' + points[points.length-1][0].toFixed(1) + ' ' + (padT+innerH) + ' L ' + points[0][0].toFixed(1) + ' ' + (padT+innerH) + ' Z';
+  const fullPath = points.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const area = fullPath + ' L ' + points[points.length-1][0].toFixed(1) + ' ' + (padT+innerH) + ' L ' + points[0][0].toFixed(1) + ' ' + (padT+innerH) + ' Z';
   const gridLines = [0,0.25,0.5,0.75,1].map(f => {
     const y = padT + innerH - f*innerH;
     const val = (minV + f*(maxV-minV)).toFixed(1);
     return '<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="#E3E8DF" stroke-width="1"/>' +
            '<text x="'+(padL-6)+'" y="'+(y+3)+'" font-size="9" fill="#6B7A6E" text-anchor="end" font-family="IBM Plex Mono, monospace">'+val+'</text>';
   }).join('');
+  // Line drawn as per-segment paths so each stretch can take the color of the point it leaves from
+  let segPaths = '';
+  for(let i=0;i<points.length-1;i++){
+    segPaths += '<path d="M '+points[i][0].toFixed(1)+' '+points[i][1].toFixed(1)+' L '+points[i+1][0].toFixed(1)+' '+points[i+1][1].toFixed(1)+'" fill="none" stroke="'+(colors[i]||'#3F7A56')+'" stroke-width="2.5"/>';
+  }
   // Each point gets a native SVG <title> — shows the exact value as a floating tooltip on hover
-  const dots = points.map((p,i) => '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="5" fill="'+color+'" style="cursor:pointer;"><title>' + labels[i] + ': ' + data[i] + unitSuffix + '</title></circle>').join('');
+  const dots = points.map((p,i) => '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="5" fill="'+(colors[i]||'#3F7A56')+'" style="cursor:pointer;"><title>' + labels[i] + ': ' + data[i] + unitSuffix + '</title></circle>').join('');
   const xlabels = labels.map((l,i) => '<text x="'+points[i][0].toFixed(1)+'" y="'+(H-8)+'" font-size="10" fill="#6B7A6E" text-anchor="middle">'+l+'</text>').join('');
-  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;">' + gridLines +
-    '<path d="'+area+'" fill="'+color+'" opacity="0.12"/>' +
-    '<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="2.5"/>' + dots + xlabels + '</svg>';
+  const svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;">' + gridLines +
+    '<path d="'+area+'" fill="'+(colors[0]||'#3F7A56')+'" opacity="0.10"/>' +
+    segPaths + dots + xlabels + '</svg>';
+  const legendHtml = (legend && legend.length) ? '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">' +
+    legend.map(li => '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#6B7A6E;"><span style="width:9px;height:9px;border-radius:50%;background:'+li.color+';display:inline-block;"></span>'+li.label+'</span>').join('') + '</div>' : '';
+  return svg + legendHtml;
 }
 
 /* ===================== ADAPTIVE TREND CHART ===================== */
@@ -798,6 +811,7 @@ function renderChartMonthChips(){
       if(chartCustomMonths.has(mk)) chartCustomMonths.delete(mk); else chartCustomMonths.add(mk);
       if(!chartCustomMonths.size) chartCustomMonths = null;
       renderChartMonthChips();
+      renderChartModeToggle();
       renderTrendChartOnly();
     });
     chartMonthChips.appendChild(btn);
@@ -806,6 +820,7 @@ function renderChartMonthChips(){
 chartCustomResetBtn.addEventListener('click', () => {
   chartCustomMonths = null;
   renderChartMonthChips();
+  renderChartModeToggle();
   renderTrendChartOnly();
 });
 
@@ -827,24 +842,52 @@ function renderChartPeriodToggles(){
     btn.addEventListener('click', () => {
       if(chartVisiblePeriodIds.has(p.id)){ if(chartVisiblePeriodIds.size>1) chartVisiblePeriodIds.delete(p.id); }
       else chartVisiblePeriodIds.add(p.id);
-      renderChartPeriodToggles();
+      renderChartPeriodToggles(); renderChartModeToggle();
       renderTrendChartOnly();
     });
     chartPeriodToggles.appendChild(btn);
   });
 }
 
+function renderChartModeToggle(){
+  const visibleCount = periods.filter(p => chartVisiblePeriodIds.has(p.id)).length || 1;
+  if(periods.length <= 1 || visibleCount <= 1 || (chartCustomMonths && chartCustomMonths.size)){
+    chartModeToggle.classList.add('hidden'); chartModeToggle.innerHTML = ''; return;
+  }
+  chartModeToggle.classList.remove('hidden');
+  chartModeToggle.innerHTML = '';
+  const label = document.createElement('span');
+  label.style.cssText = 'font-size:11px;color:var(--muted);align-self:center;margin-right:2px;';
+  label.textContent = 'Ver:';
+  chartModeToggle.appendChild(label);
+  [['global','Total global por mes'],['weekly','Detalle por semana']].forEach(([mode,txt]) => {
+    const on = trendChartMode === mode;
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = txt;
+    btn.style.background = on ? '#23281F' : '#E3E8DF';
+    btn.style.color = on ? '#EDF1EC' : '#6B7A6E';
+    btn.addEventListener('click', () => { trendChartMode = mode; renderChartModeToggle(); renderTrendChartOnly(); });
+    chartModeToggle.appendChild(btn);
+  });
+}
+
+const CHART_MONTH_PALETTE = ['#3F7A56','#C98A2C','#6B5B95','#B84A3E','#2E86AB','#8E5572','#5C7A29','#A6631C'];
+function monthColor(mk){ const idx = monthOrder.indexOf(mk); return CHART_MONTH_PALETTE[idx % CHART_MONTH_PALETTE.length] || '#3F7A56'; }
+
 function computeTrendChart(){
   if(chartCustomMonths && chartCustomMonths.size){
     const customWeeks = weekOrder.filter(w => chartCustomMonths.has(weekToMonth[w]));
     const weeks = aggregateWeeks(rawRows, new Set(customWeeks));
-    const monthLabelsTxt = [...chartCustomMonths].sort().map(mk => monthLabels[mk]).join(', ');
+    const sortedMonths = [...chartCustomMonths].sort();
+    const monthLabelsTxt = sortedMonths.map(mk => monthLabels[mk]).join(', ');
     return {
       title: 'Tendencia personalizada — Kg/día de scrap (' + monthLabelsTxt + ')',
       labels: weeks.map(w => 'S' + w.id),
       data: weeks.map(w => Math.round((w.kgScrap / w.days) * 10) / 10),
       unit: ' kg/día',
-      color: '#6B5B95',
+      color: weeks.map(w => monthColor(weekToMonth[w.id])),
+      legend: sortedMonths.map(mk => ({ label: monthLabels[mk], color: monthColor(mk) })),
       note: 'Selección independiente de la comparación de períodos.'
     };
   }
@@ -854,17 +897,42 @@ function computeTrendChart(){
   if(effective.length <= 1){
     const p = effective[0];
     const weeks = aggregateWeeks(rawRows, p.weeks);
-    const idx = periods.indexOf(p);
+    const monthsInPeriod = [...new Set(weeks.map(w => weekToMonth[w.id]).filter(Boolean))];
+    const multiMonth = monthsInPeriod.length > 1;
     return {
       title: 'Tendencia semanal — Kg/día de scrap' + (periods.length>1 ? ' (' + periodDisplayLabel(p) + ')' : ''),
       labels: weeks.map(w => 'S' + w.id),
       data: weeks.map(w => Math.round((w.kgScrap / w.days) * 10) / 10),
       unit: ' kg/día',
-      color: PERIOD_COLORS[idx] || PERIOD_COLORS[0],
+      color: multiMonth ? weeks.map(w => monthColor(weekToMonth[w.id])) : (PERIOD_COLORS[periods.indexOf(p)] || PERIOD_COLORS[0]),
+      legend: multiMonth ? monthsInPeriod.map(mk => ({ label: monthLabels[mk], color: monthColor(mk) })) : null,
       note: ''
     };
   }
   const ordered = chronoOrderedPeriods(effective);
+
+  if(trendChartMode === 'weekly'){
+    const allWeeks = [];
+    ordered.forEach(({p}) => { p.weeks.forEach(w => allWeeks.push(w)); });
+    const weekSet = new Set(allWeeks);
+    const weeksChrono = weekOrder.filter(w => weekSet.has(w));
+    const owningColor = (w) => {
+      const found = ordered.find(({p}) => p.weeks.has(w));
+      return found ? (PERIOD_COLORS[found.i] || PERIOD_COLORS[0]) : PERIOD_COLORS[0];
+    };
+    const weeksData = aggregateWeeks(rawRows, new Set(weeksChrono));
+    const legend = ordered.map(({p,i}) => ({ label: (i===0?'Principal':('Comp. '+i)) + ' · ' + periodDisplayLabel(p), color: PERIOD_COLORS[i] || PERIOD_COLORS[0] }));
+    return {
+      title: 'Tendencia por semana — Kg/día de scrap (comparando períodos)',
+      labels: weeksData.map(w => 'S' + w.id),
+      data: weeksData.map(w => Math.round((w.kgScrap / w.days) * 10) / 10),
+      unit: ' kg/día',
+      color: weeksData.map(w => owningColor(w.id)),
+      legend,
+      note: ''
+    };
+  }
+
   const labels = ordered.map(({p}) => periodDisplayLabel(p));
   const missing = [];
   const data = ordered.map(({p,i}) => {
@@ -872,9 +940,11 @@ function computeTrendChart(){
     const t = aggregateCategoryTotals(rawRows, p.weeks, p.totalCut);
     return t.overallPct === null ? 0 : t.overallPct;
   });
+  const pointColors = ordered.map(({p,i}) => PERIOD_COLORS[i] || PERIOD_COLORS[0]);
+  const legend = ordered.map(({p,i}) => ({ label: (i===0?'Principal':('Comp. '+i)) + ' · ' + periodDisplayLabel(p), color: PERIOD_COLORS[i] || PERIOD_COLORS[0] }));
   return {
     title: 'Tendencia entre períodos — % de scrap total',
-    labels, data, unit: '%', color: PERIOD_COLORS[0],
+    labels, data, unit: '%', color: pointColors, legend,
     note: missing.length ? ('Falta el kg cortado de: ' + missing.join(', ') + ' — se muestra como 0%.') : ''
   };
 }
@@ -883,7 +953,7 @@ function renderTrendChartOnly(){
   try{
     const chart = computeTrendChart();
     trendChartTitle.textContent = chart.title;
-    trendChartBox.innerHTML = chart.data.length ? lineChartSvg(chart.labels, chart.data, chart.color, chart.unit) : '<p style="font-size:13px;color:var(--muted);">Sin semanas seleccionadas.</p>';
+    trendChartBox.innerHTML = chart.data.length ? lineChartSvg(chart.labels, chart.data, chart.color, chart.unit, chart.legend) : '<p style="font-size:13px;color:var(--muted);">Sin semanas seleccionadas.</p>';
     trendChartNote.textContent = chart.note;
   }catch(e){ console.error('trend error', e); trendChartBox.innerHTML = ''; }
 }
@@ -915,14 +985,41 @@ function renderDashboard(){
     }).join('');
   }catch(e){ console.error('kpi error', e); statGrid.innerHTML = ''; gaugeRow.innerHTML = ''; }
 
+  try{ renderPeriodTotalsRow(); }catch(e){ console.error('period totals error', e); periodTotalsRow.innerHTML = ''; }
+
   try{
-    renderChartPeriodToggles();
+    renderChartPeriodToggles(); renderChartModeToggle();
     renderTrendChartOnly();
   }catch(e){ console.error('trend error', e); trendChartBox.innerHTML = ''; }
 
   try{ renderCompareTable(); }catch(e){ console.error('compare table error', e); compareTableBox.innerHTML = ''; }
 }
 catFilter.addEventListener('change', renderDashboard);
+
+function filteredPeriodTotal(period, filterCat){
+  if(filterCat === 'TODAS'){
+    const t = aggregateCategoryTotals(rawRows, period.weeks, period.totalCut);
+    return { kg: t.totalScrapAll, pct: t.overallPct };
+  }
+  const cats = aggregateCategories(rawRows, period.weeks, period.totalCut).filter(c => c.category === filterCat);
+  const kg = Math.round(cats.reduce((s,c) => s + c.kgTotal, 0) * 10) / 10;
+  const pct = period.totalCut ? Math.round((kg/period.totalCut)*10000)/100 : null;
+  return { kg, pct };
+}
+
+function renderPeriodTotalsRow(){
+  if(!rawRows.length){ periodTotalsRow.innerHTML = ''; return; }
+  const filter = catFilter.value;
+  const ordered = chronoOrderedPeriods();
+  periodTotalsRow.innerHTML = ordered.map(({p,i}) => {
+    const t = filteredPeriodTotal(p, filter);
+    const roleLabel = i===0 ? 'Principal' : ('Comp. '+i);
+    const color = PERIOD_COLORS[i] || PERIOD_COLORS[0];
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+color+'18;border:1px solid '+color+'55;border-radius:999px;padding:6px 12px;font-size:12px;">' +
+      '<b style="color:'+color+';">'+roleLabel+' · '+periodDisplayLabel(p)+'</b>' +
+      '<span style="font-family:IBM Plex Mono,monospace;">'+t.kg.toLocaleString()+' kg'+(t.pct!==null?' · '+t.pct+'%':'')+'</span></span>';
+  }).join('');
+}
 
 function renderCompareTable(){
   const filter = catFilter.value;
@@ -936,10 +1033,15 @@ function renderCompareTable(){
       '<td style="padding:7px 8px;"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + (CATCOLOR[c.category]||'#3F7A56') + '22;color:' + (CATCOLOR[c.category]||'#3F7A56') + ';">' + c.category + '</span> ' + c.subcategory + '</td>' +
       '<td style="padding:7px 8px;font-family:IBM Plex Mono,monospace;text-align:right;">' + (c.pct===null?'N/D':c.pct+'%') + '</td>' +
     '</tr>').join('');
+    const totalPct = cats.reduce((s,c) => s + (c.pct||0), 0);
+    const anyNull = cats.some(c => c.pct===null);
     compareTableBox.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
-      '<thead><tr style="color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.05em;">' +
-        '<th style="text-align:left;padding:7px 8px;">Subcategoría</th><th style="text-align:right;padding:7px 8px;">%</th>' +
-      '</tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+      '<thead><tr style="color:' + PERIOD_COLORS[0] + ';text-transform:uppercase;font-size:11px;letter-spacing:.05em;">' +
+        '<th style="text-align:left;padding:7px 8px;">Subcategoría</th><th style="text-align:right;padding:7px 8px;">' + periodDisplayLabel(main) + '</th>' +
+      '</tr></thead><tbody>' + rowsHtml +
+      '<tr style="border-top:2px solid var(--ink);"><td style="padding:8px;font-weight:700;">Total' + (filter!=='TODAS' ? ' ('+filter+')' : '') + '</td>' +
+      '<td style="padding:8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:700;">' + (anyNull && !totalPct ? 'N/D' : Math.round(totalPct*100)/100 + '%') + '</td></tr>' +
+      '</tbody></table>' +
       '<p style="font-size:12px;color:var(--muted);margin-top:8px;">Agrega un período de comparación en "Cargar datos" para ver diferencias entre períodos.</p>';
     return;
   }
@@ -958,13 +1060,16 @@ function renderCompareTable(){
 
   // Chronological order: oldest period first, most recent last (independent of Principal/Comparación role)
   const orderedCols = chronoOrderedPeriods().map(({p, i}) => {
-    if(i === 0) return { p, isMain: true, label: periodDisplayLabel(p) };
+    if(i === 0) return { p, i, isMain: true, label: periodDisplayLabel(p), color: PERIOD_COLORS[0] };
     const cmp = compared.find(c => c.period.id === p.id);
-    return { p, isMain: false, label: periodDisplayLabel(p), cmp };
+    return { p, i, isMain: false, label: periodDisplayLabel(p), color: PERIOD_COLORS[i] || PERIOD_COLORS[0], cmp };
   });
 
-  const headerCols = ['Subcategoría'];
-  orderedCols.forEach(col => { headerCols.push(col.label); if(!col.isMain) headerCols.push('Δ'); });
+  const headerCells = ['<th style="text-align:left;padding:7px 8px;color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.05em;">Subcategoría</th>'];
+  orderedCols.forEach(col => {
+    headerCells.push('<th style="text-align:right;padding:7px 8px;color:'+col.color+';text-transform:uppercase;font-size:11px;letter-spacing:.05em;">' + col.label + '</th>');
+    if(!col.isMain) headerCells.push('<th style="text-align:right;padding:7px 8px;color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.05em;">Δ</th>');
+  });
 
   const rowsHtml = rows.map(r => {
     let cells = '<td style="padding:7px 8px;"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + (CATCOLOR[r.category]||'#3F7A56') + '22;color:' + (CATCOLOR[r.category]||'#3F7A56') + ';">' + r.category + '</span> ' + r.subcategory + '</td>';
@@ -986,10 +1091,31 @@ function renderCompareTable(){
     return '<tr style="border-bottom:1px solid var(--track);">' + cells + '</tr>';
   }).join('');
 
-  compareTableBox.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:' + (280 + (headerCols.length-1)*110) + 'px;">' +
-    '<thead><tr style="color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.05em;">' +
-      headerCols.map((h,i) => '<th style="text-align:' + (i===0?'left':'right') + ';padding:7px 8px;">' + h + '</th>').join('') +
-    '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+  // Totals footer — sums the currently filtered rows per column, updates live with the category filter
+  let totalsCells = '<td style="padding:8px;font-weight:700;">Total' + (filter!=='TODAS' ? ' ('+filter+')' : '') + '</td>';
+  orderedCols.forEach(col => {
+    if(col.isMain){
+      const t = rows.reduce((s,r) => s + (r.mainPct||0), 0);
+      totalsCells += '<td style="padding:8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:700;">' + (Math.round(t*100)/100) + '%</td>';
+      return;
+    }
+    if(!col.cmp || col.cmp.status !== 'ok'){ totalsCells += '<td colspan="2" style="padding:8px;text-align:right;color:var(--muted);font-size:12px;">falta kg cortado</td>'; return; }
+    let histTotal = 0, deltaTotal = 0;
+    rows.forEach(r => {
+      const it = col.cmp.items.find(x => x.category === r.category && x.subcategory === r.subcategory);
+      if(it && it.histPct !== null) histTotal += it.histPct;
+      if(it && it.deltaPts !== null) deltaTotal += it.deltaPts;
+    });
+    const dColor = deltaTotal > 0.05 ? '#B84A3E' : deltaTotal < -0.05 ? '#3F7A56' : '#6B7A6E';
+    const dArrow = deltaTotal > 0.05 ? '↑' : deltaTotal < -0.05 ? '↓' : '≈';
+    totalsCells += '<td style="padding:8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:700;">' + (Math.round(histTotal*100)/100) + '%</td>';
+    totalsCells += '<td style="padding:8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:700;color:'+dColor+';">' + dArrow + ' ' + Math.abs(Math.round(deltaTotal*100)/100) + '</td>';
+  });
+
+  compareTableBox.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:' + (280 + (orderedCols.length)*180) + 'px;">' +
+    '<thead><tr>' + headerCells.join('') + '</tr></thead><tbody>' + rowsHtml +
+    '<tr style="border-top:2px solid var(--ink);">' + totalsCells + '</tr>' +
+    '</tbody></table></div>';
 }
 
 /* ===================== CONCLUSIONS (unified, calm tone, elaborated, multi-period) ===================== */
@@ -1327,7 +1453,7 @@ function buildExportHtml(r){
       '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:28px;font-weight:700;color:#3F7A56;">' + k.value + '</div>' +
       '<div style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#23281F;margin-top:4px;">' + k.label + '</div></div>'
   ).join('');
-  const chartSvg = chart.data.length ? lineChartSvg(chart.labels, chart.data, chart.color, chart.unit) : '';
+  const chartSvg = chart.data.length ? lineChartSvg(chart.labels, chart.data, chart.color, chart.unit, chart.legend) : '';
   const pointsLis = (r.points||[]).map(p => '<li style="margin-bottom:6px;">' + p + '</li>').join('');
 
   return '' +
