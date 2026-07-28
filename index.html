@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Control de Scrap — Super Sacos</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" onerror="window.__h2cLoadFailed=true"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap');
+  :root{
+    --bg:#EDF1EC; --surface:#FFFFFF; --ink:#23281F; --muted:#6B7A6E;
+    --border:#DCE3D9; --green:#3F7A56; --amber:#C98A2C; --red:#B84A3E;
+    --steel:#4C5B57; --track:#E3E8DF; --yellow:#E8C84A; --purple:#6B5B95;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;}
+  .wrap{max-width:880px;margin:0 auto;padding:28px 20px 60px;}
+  .eyebrow{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.12em;}
+  h1{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:600;margin:6px 0 18px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;}
+  label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:6px;}
+  select,input[type=text],input[type=number],textarea{width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--border);font-size:14px;background:#fff;color:var(--ink);font-family:'Inter',sans-serif;}
+  textarea{resize:vertical;}
+  .btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;padding:10px 16px;font-size:13.5px;font-weight:600;cursor:pointer;transition:opacity .15s;white-space:nowrap;}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+  .btn-primary{background:var(--ink);color:var(--bg);}
+  .btn-green{background:var(--green);color:#fff;}
+  .btn-steel{background:var(--steel);color:#fff;}
+  .btn-row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;}
+  .status{font-size:12.5px;color:var(--muted);margin-top:8px;min-height:16px;}
+  .status.error{color:var(--red);}
+  .status.ok{color:var(--green);}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--track);border-top-color:var(--ink);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .kpi-row{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0;}
+  .kpi{flex:1;min-width:120px;background:var(--track);border-radius:12px;padding:12px 10px;text-align:center;}
+  .kpi b{display:block;font-family:'IBM Plex Mono',monospace;font-size:22px;margin-top:2px;}
+  .kpi span{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
+  .note{background:#FBF3E6;border:1px solid var(--amber);border-radius:10px;padding:10px 12px;font-size:13px;margin-top:8px;}
+  ul.report-list{margin:6px 0 0;padding-left:18px;font-size:13px;}
+  ul.report-list li{margin-bottom:6px;}
+  .hidden{display:none;}
+  .chip{font-size:12px;padding:6px 12px;border-radius:999px;font-weight:600;cursor:pointer;border:2px solid transparent;}
+  .chip-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+  .mapping{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6;}
+  .mapping b{color:var(--ink);}
+  .row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:180px;}
+  .tabbar{display:flex;border-radius:12px;overflow:hidden;border:1px solid var(--border);margin-bottom:20px;width:fit-content;}
+  .tabbar button{border:none;background:var(--surface);color:var(--ink);padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+  .tabbar button.active{background:var(--ink);color:var(--bg);}
+  .gauge-row{display:flex;gap:14px;flex-wrap:wrap;}
+  .gauge-box{flex:1;min-width:130px;text-align:center;}
+  .gauge-val{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;}
+  .gauge-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-top:2px;}
+  .period-chip{display:flex;align-items:center;gap:6px;border-radius:12px;padding:8px 10px;cursor:pointer;border:2px solid transparent;background:#fff;box-shadow:0 0 0 1px var(--border) inset;}
+  .period-chip.active{box-shadow:none;}
+  .period-chip .dot{width:9px;height:9px;border-radius:50%;flex:none;}
+  .period-chip .txt{display:flex;flex-direction:column;line-height:1.2;}
+  .period-chip .txt b{font-size:12px;}
+  .period-chip .txt small{font-size:10.5px;color:var(--muted);}
+  .period-chip .rm{margin-left:4px;font-size:14px;color:var(--muted);font-weight:700;padding:0 4px;}
+  .add-period{border:1.5px dashed var(--border);border-radius:12px;padding:8px 14px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;background:none;}
+  .add-period:disabled{opacity:.4;cursor:not-allowed;}
+  details.adv{margin-top:4px;}
+  details.adv summary{cursor:pointer;font-size:12px;color:var(--muted);font-weight:600;padding:4px 0;list-style:none;}
+  details.adv summary::-webkit-details-marker{display:none;}
+  details.adv summary:before{content:'▸ ';}
+  details.adv[open] summary:before{content:'▾ ';}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Planta · Bolsas Industriales · Producto v1</div>
+  <h1>Control de scrap</h1>
+
+  <div class="tabbar" id="tabbar">
+    <button data-tab="cargar" class="active">Cargar datos</button>
+    <button data-tab="dashboard">Dashboard</button>
+  </div>
+
+  <!-- ===== TAB: CARGAR DATOS ===== -->
+  <div id="tabCargar">
+    <div class="card">
+      <label>Archivo de datos</label>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" />
+      <button class="btn btn-steel" id="importBtn">Elegir archivo</button>
+      <div id="importStatus" class="status"></div>
+      <div id="mapping" class="mapping hidden"></div>
+    </div>
+
+    <div id="mapCard" class="card hidden">
+      <div class="row" style="align-items:flex-start;">
+        <div>
+          <label>Hoja</label>
+          <select id="sheetSelect"></select>
+        </div>
+      </div>
+      <label style="margin-top:12px;">Confirma qué columna corresponde a cada dato</label>
+      <div id="mapForm"></div>
+      <div class="btn-row">
+        <button id="confirmMapBtn" class="btn btn-primary">Confirmar y continuar</button>
+      </div>
+      <div id="mapStatus" class="status"></div>
+    </div>
+
+    <div id="periodCard" class="card hidden">
+      <label>Períodos a analizar</label>
+      <div id="periodTargetRow" class="chip-row"></div>
+
+      <div class="row" style="margin-top:14px;">
+        <div>
+          <label>Título de este período</label>
+          <input type="text" id="activePeriodTitle" placeholder="Ej. Mayo 2026" />
+        </div>
+        <div>
+          <label>Kg cortados de este período</label>
+          <input type="number" min="0" id="activePeriodCut" placeholder="Ej. 145000" />
+        </div>
+      </div>
+
+      <div id="monthSection" class="hidden">
+        <label style="margin-top:12px;">Por mes</label>
+        <div id="monthChips" class="chip-row"></div>
+      </div>
+
+      <details class="adv">
+        <summary>Ajuste fino por semana (período activo)</summary>
+        <div id="weekPresets" class="chip-row"></div>
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <label>Desde</label>
+            <select id="weekFrom"></select>
+          </div>
+          <div>
+            <label>Hasta</label>
+            <select id="weekTo"></select>
+          </div>
+        </div>
+        <label style="margin-top:10px;">Semanas del período activo</label>
+        <div id="weekChips" class="chip-row"></div>
+      </details>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px;">La comparación entre períodos es opcional. Puedes analizar solo el período principal, o agregar hasta 3 períodos más para comparar.</p>
+    </div>
+  </div>
+
+  <!-- ===== TAB: DASHBOARD ===== -->
+  <div id="tabDashboard" class="hidden">
+    <div id="dashEmpty" class="card">
+      <p style="font-size:13px;color:var(--muted);">Importa y conecta tu Excel en la pestaña "Cargar datos" para ver el dashboard.</p>
+    </div>
+    <div id="dashContent" class="hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <label style="margin:0;">Filtrar por categoría</label>
+          <select id="catFilter" style="width:auto;min-width:160px;">
+            <option value="TODAS">Todas</option>
+            <option value="CORTE">CORTE</option>
+            <option value="MERMA">MERMA</option>
+            <option value="PLANTA">PLANTA</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card">
+        <label>Indicadores del período principal</label>
+        <div class="kpi-row" id="statGrid"></div>
+        <div class="gauge-row" id="gaugeRow" style="margin-top:14px;"></div>
+        <div id="periodTotalsRow" class="chip-row" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <label id="trendChartTitle">Tendencia</label>
+        <div id="chartPeriodToggles" class="chip-row hidden"></div>
+        <div id="chartModeToggle" class="chip-row hidden" style="margin-top:4px;"></div>
+        <details class="adv" id="chartCustomDetails">
+          <summary>Ver meses específicos en el gráfico (independiente de la comparación)</summary>
+          <div id="chartMonthChips" class="chip-row"></div>
+          <button id="chartCustomResetBtn" class="btn btn-steel" style="margin-top:8px;padding:6px 12px;font-size:12px;">Usar selección automática</button>
+        </details>
+        <div id="trendChartBox"></div>
+        <div id="trendChartNote" class="status"></div>
+      </div>
+
+      <div class="card">
+        <label>Detalle diario — investiga un día puntual</label>
+        <div id="dayDetailQuick" class="chip-row"></div>
+        <div class="row" style="margin-top:8px;">
+          <div>
+            <label style="margin-bottom:4px;">O elige cualquier fecha</label>
+            <select id="dayDetailSelect"><option value="">— elige una fecha —</option></select>
+          </div>
+        </div>
+        <div id="dayDetailBox" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <label>Scrap por subcategoría</label>
+        <div id="compareTableBox"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <label style="margin:0;">Conclusiones</label>
+          <button id="generateBtn" class="btn btn-primary">Generar conclusiones</button>
+        </div>
+        <div id="status" class="status"></div>
+        <div id="previewCard" class="hidden" style="margin-top:14px;">
+          <div id="previewContent"></div>
+        </div>
+        <div id="editCard" class="hidden" style="margin-top:18px;border-top:1px solid var(--track);padding-top:16px;">
+          <label>Conclusión (editable)</label>
+          <textarea id="editConclusion" rows="5"></textarea>
+          <label style="margin-top:12px;">Puntos a destacar (uno por línea, editable)</label>
+          <textarea id="editPoints" rows="5"></textarea>
+          <label style="margin-top:12px;">Notas y justificaciones adicionales (opcional)</label>
+          <textarea id="editNotes" rows="2" placeholder="Ej. el aumento en ROJO se debe a un pedido especial de cliente X..."></textarea>
+          <div class="btn-row">
+            <button id="downloadJpgBtn" class="btn btn-green" disabled>Descargar JPEG</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== TABS ===================== */
+const tabbar = document.getElementById('tabbar');
+const tabSections = { cargar: document.getElementById('tabCargar'), dashboard: document.getElementById('tabDashboard') };
+tabbar.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    tabbar.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    Object.entries(tabSections).forEach(([k,el]) => el.classList.toggle('hidden', k !== btn.dataset.tab));
+    if(btn.dataset.tab === 'dashboard') renderDashboard();
+  });
+});
+
+/* ===================== DOM refs ===================== */
+const fileInput = document.getElementById('fileInput');
+const importBtn = document.getElementById('importBtn');
+const importStatus = document.getElementById('importStatus');
+const mappingEl = document.getElementById('mapping');
+const mapCard = document.getElementById('mapCard');
+const sheetSelect = document.getElementById('sheetSelect');
+const mapForm = document.getElementById('mapForm');
+const confirmMapBtn = document.getElementById('confirmMapBtn');
+const mapStatus = document.getElementById('mapStatus');
+const periodCard = document.getElementById('periodCard');
+const periodTargetRow = document.getElementById('periodTargetRow');
+const activePeriodTitle = document.getElementById('activePeriodTitle');
+const activePeriodCut = document.getElementById('activePeriodCut');
+const monthSection = document.getElementById('monthSection');
+const monthChips = document.getElementById('monthChips');
+const weekPresets = document.getElementById('weekPresets');
+const weekFrom = document.getElementById('weekFrom');
+const weekTo = document.getElementById('weekTo');
+const weekChips = document.getElementById('weekChips');
+const dashEmpty = document.getElementById('dashEmpty');
+const dashContent = document.getElementById('dashContent');
+const catFilter = document.getElementById('catFilter');
+const statGrid = document.getElementById('statGrid');
+const gaugeRow = document.getElementById('gaugeRow');
+const periodTotalsRow = document.getElementById('periodTotalsRow');
+const trendChartTitle = document.getElementById('trendChartTitle');
+const chartPeriodToggles = document.getElementById('chartPeriodToggles');
+const chartModeToggle = document.getElementById('chartModeToggle');
+const chartMonthChips = document.getElementById('chartMonthChips');
+const chartCustomResetBtn = document.getElementById('chartCustomResetBtn');
+const trendChartBox = document.getElementById('trendChartBox');
+const trendChartNote = document.getElementById('trendChartNote');
+const dayDetailQuick = document.getElementById('dayDetailQuick');
+const dayDetailSelect = document.getElementById('dayDetailSelect');
+const dayDetailBox = document.getElementById('dayDetailBox');
+const compareTableBox = document.getElementById('compareTableBox');
+const generateBtn = document.getElementById('generateBtn');
+const statusEl = document.getElementById('status');
+const previewCard = document.getElementById('previewCard');
+const previewContent = document.getElementById('previewContent');
+const editCard = document.getElementById('editCard');
+const editConclusion = document.getElementById('editConclusion');
+const editPoints = document.getElementById('editPoints');
+const editNotes = document.getElementById('editNotes');
+const downloadJpgBtn = document.getElementById('downloadJpgBtn');
+
+importBtn.addEventListener('click', () => fileInput.click());
+
+/* ===================== STATE ===================== */
+let rawRows = [];
+let parsedJson = [];
+let parsedHeaders = [];
+let weekOrder = [];
+let daysByWeek = {};
+let currentReport = null;
+let currentFileName = '', currentSheetName = '', currentWorkbook = null;
+let weekToMonth = {};
+let monthLabels = {};
+let monthOrder = [];
+const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const CATCOLOR = { CORTE:'#4C5B57', MERMA:'#C98A2C', PLANTA:'#3F7A56' };
+const PERIOD_COLORS = ['#3F7A56','#C98A2C','#6B5B95','#4C5B57'];
+const OPPORTUNITY_TEXT = {
+  CORTE: "revisar el puesto de corte y ajustar plantillas/moldes",
+  MERMA: "hacer una auditoría del proceso con el equipo de planta",
+  PLANTA: "conversar con los operarios involucrados y reforzar buenas prácticas"
+};
+
+// periods[0] is always the main/principal period. periods[1..3] are optional comparison periods.
+let periods = [ { id:'p0', label:'Principal', weeks:new Set(), totalCut:0, title:'' } ];
+let activePeriodId = 'p0';
+let chartVisiblePeriodIds = new Set(['p0']); // which periods show up in the trend chart — independent of comparison setup
+let chartCustomMonths = null; // Set of month keys chosen purely for chart display, independent of periods/comparison
+let trendChartMode = 'global'; // 'global' (one point per period, % total) | 'weekly' (kg/día detail across all visible periods)
+let periodSeq = 1;
+
+function normalize(s){ return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+function guessCol(headers, keywords){
+  for(const h of headers){ const n = normalize(h); if(keywords.some(k => n.includes(k))) return h; }
+  return null;
+}
+
+function computeMonthMapping(){
+  weekToMonth = {}; monthLabels = {}; monthOrder = [];
+  const counts = {};
+  rawRows.forEach(r => {
+    if(!r.fecha) return;
+    const m = r.fecha.match(/^(\d{4})-(\d{2})/);
+    if(!m) return;
+    const key = m[1] + '-' + m[2];
+    counts[r.semana] = counts[r.semana] || {};
+    counts[r.semana][key] = (counts[r.semana][key] || 0) + 1;
+  });
+  weekOrder.forEach(w => {
+    const c = counts[w];
+    if(!c) return;
+    const best = Object.entries(c).sort((a,b) => b[1]-a[1])[0][0];
+    weekToMonth[w] = best;
+  });
+  const keys = [...new Set(Object.values(weekToMonth))].sort();
+  keys.forEach(k => {
+    const [y,mo] = k.split('-');
+    monthLabels[k] = MONTH_NAMES[parseInt(mo,10)-1] + ' ' + y;
+  });
+  monthOrder = keys;
+}
+
+function describeWeeks(weeksArr){
+  if(!weeksArr || !weeksArr.length) return '';
+  const months = [...new Set(weeksArr.map(w => weekToMonth[w]).filter(Boolean))];
+  if(months.length === 1 && weeksArr.every(w => weekToMonth[w])) return monthLabels[months[0]];
+  const idxs = weeksArr.map(w => weekOrder.indexOf(w)).sort((a,b) => a-b);
+  const contiguous = idxs.every((v,i) => i===0 || v === idxs[i-1]+1);
+  if(contiguous) return 'S' + weekOrder[idxs[0]] + (idxs.length>1 ? ' a S' + weekOrder[idxs[idxs.length-1]] : '');
+  return weeksArr.map(w => 'S'+w).join(', ');
+}
+function periodDisplayLabel(p){ return p.title || describeWeeks([...p.weeks].sort((a,b) => weekOrder.indexOf(a)-weekOrder.indexOf(b))) || p.label; }
+
+/* ===================== IMPORT (manual file upload) ===================== */
+function processWorkbookBytes(arrayBuffer, sourceName){
+  try{
+    const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+    currentWorkbook = wb;
+    currentFileName = sourceName;
+    if(!wb.SheetNames.length) throw new Error('Sin hojas');
+    sheetSelect.innerHTML = wb.SheetNames.map(n => '<option value="'+n+'">'+n+'</option>').join('');
+    let bestSheet = wb.SheetNames[0], bestRows = -1;
+    wb.SheetNames.forEach(name => {
+      try{ const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' }); if(rows.length > bestRows){ bestRows = rows.length; bestSheet = name; } }catch(e){}
+    });
+    sheetSelect.value = bestSheet;
+    importStatus.textContent = 'Archivo cargado desde "' + sourceName + '". Confirma la hoja y las columnas abajo.';
+    importStatus.className = 'status ok';
+    loadSheet(bestSheet);
+    mapCard.classList.remove('hidden');
+  }catch(err){
+    console.error(err);
+    importStatus.textContent = 'No se pudo leer el archivo. Verifica que sea un .xlsx, .xls o .csv válido.';
+    importStatus.className = 'status error';
+  }
+}
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  importStatus.textContent = 'Leyendo archivo...';
+  importStatus.className = 'status';
+  mappingEl.classList.add('hidden'); mapCard.classList.add('hidden'); periodCard.classList.add('hidden');
+  const reader = new FileReader();
+  reader.onload = (evt) => processWorkbookBytes(evt.target.result, file.name);
+  reader.readAsArrayBuffer(file);
+});
+
+sheetSelect.addEventListener('change', () => loadSheet(sheetSelect.value));
+
+function loadSheet(name){
+  currentSheetName = name;
+  const ws = currentWorkbook.Sheets[name];
+  const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  if(!json.length){
+    importStatus.textContent = 'La hoja "' + name + '" está vacía. Elige otra.';
+    importStatus.className = 'status error';
+    return;
+  }
+  parsedJson = json;
+  parsedHeaders = Object.keys(json[0]);
+  renderMapForm();
+}
+
+function renderMapForm(){
+  const guesses = {
+    semana: guessCol(parsedHeaders, ['seman','week']),
+    categoria: guessCol(parsedHeaders, ['categ']),
+    subcategoria: guessCol(parsedHeaders, ['subcat']),
+    peso: guessCol(parsedHeaders, ['peso','kg']),
+    fecha: guessCol(parsedHeaders, ['fecha','date'])
+  };
+  if(guesses.categoria && guesses.subcategoria && guesses.categoria === guesses.subcategoria){
+    guesses.categoria = parsedHeaders.find(h => normalize(h).includes('categ') && h !== guesses.subcategoria) || null;
+  }
+  const fields = [
+    { key:'semana', label:'Semana', required:true },
+    { key:'categoria', label:'Categoria (CORTE / MERMA / PLANTA)', required:true },
+    { key:'subcategoria', label:'Subcategoria', required:true },
+    { key:'peso', label:'Peso / Kg (scrap)', required:true },
+    { key:'fecha', label:'Fecha (opcional)', required:false }
+  ];
+  mapForm.innerHTML = '<div class="row">' + fields.map(function(f){
+    var opts = parsedHeaders.map(function(h){
+      var sel = guesses[f.key] === h ? 'selected' : '';
+      return '<option value="' + h + '" ' + sel + '>' + h + '</option>';
+    }).join('');
+    return '<div><label>' + f.label + (f.required ? '' : ' — opc.') + '</label>' +
+      '<select data-field="' + f.key + '"><option value="">' + (f.required ? '—' : '(ninguna)') + '</option>' + opts + '</select></div>';
+  }).join('') + '</div>';
+}
+
+confirmMapBtn.addEventListener('click', () => {
+  const selects = mapForm.querySelectorAll('select');
+  const map = {};
+  selects.forEach(s => { map[s.dataset.field] = s.value || null; });
+  const missing = ['semana','categoria','subcategoria','peso'].filter(k => !map[k]);
+  if(missing.length){
+    mapStatus.textContent = 'Selecciona una columna para: ' + missing.join(', ');
+    mapStatus.className = 'status error';
+    return;
+  }
+  rawRows = parsedJson.map(r => {
+    let fechaVal = map.fecha ? r[map.fecha] : '';
+    if(fechaVal instanceof Date) fechaVal = fechaVal.toISOString().slice(0,10);
+    return {
+      semana: String(r[map.semana]).trim(),
+      categoria: String(r[map.categoria]).toUpperCase().trim(),
+      subcategoria: String(r[map.subcategoria]).toUpperCase().trim(),
+      fecha: String(fechaVal).trim(),
+      peso: Number(r[map.peso]) || 0
+    };
+  }).filter(r => r.semana && r.categoria);
+
+  if(!rawRows.length){
+    mapStatus.textContent = 'No se encontraron filas con datos válidos con ese mapeo. Revisa las columnas elegidas.';
+    mapStatus.className = 'status error';
+    return;
+  }
+
+  weekOrder = [...new Set(rawRows.map(r => r.semana))];
+  daysByWeek = {};
+  weekOrder.forEach(w => { daysByWeek[w] = new Set(rawRows.filter(r => r.semana === w && r.fecha).map(r => r.fecha)); });
+  computeMonthMapping();
+
+  periods = [ { id:'p0', label:'Principal', weeks:new Set(weekOrder), totalCut:0, title: weekOrder.length ? ('Semana ' + weekOrder[0] + ' a ' + weekOrder[weekOrder.length-1]) : '' } ];
+  activePeriodId = 'p0'; periodSeq = 1;
+  chartVisiblePeriodIds = new Set(['p0']);
+  chartCustomMonths = null;
+
+  mappingEl.classList.remove('hidden');
+  mappingEl.innerHTML = '<b>' + rawRows.length + '</b> filas conectadas de <b>' + currentFileName + '</b> (hoja: ' + currentSheetName + ')<br/>' +
+    'Semanas: <b>' + weekOrder.join(', ') + '</b>' + (monthOrder.length ? ' &middot; Meses: <b>' + monthOrder.map(m => monthLabels[m]).join(', ') + '</b>' : '');
+  mapStatus.textContent = '';
+
+  renderPeriodTargetRow();
+  syncActivePeriodInputs();
+  renderWeekPresets();
+  renderMonthChips();
+  renderChartMonthChips();
+  renderDayDetailDateOptions();
+  dayDetailBox.innerHTML = '<p style="font-size:13px;color:var(--muted);">Elige una fecha arriba (o un día destacado) para ver su detalle por categoría y subcategoría.</p>';
+  renderWeekRangeSelectors();
+  renderWeekChips();
+  periodCard.classList.remove('hidden');
+  currentReport = null;
+  previewCard.classList.add('hidden');
+  editCard.classList.add('hidden');
+  dashEmpty.classList.add('hidden');
+  dashContent.classList.remove('hidden');
+  renderDashboard();
+});
+
+/* ===================== MULTI-PERIOD MANAGEMENT ===================== */
+function getPeriod(id){ return periods.find(p => p.id === id); }
+function getActivePeriod(){ return getPeriod(activePeriodId) || periods[0]; }
+
+function addComparisonPeriod(){
+  if(periods.length >= 4) return;
+  periodSeq++;
+  const id = 'p' + Date.now();
+  periods.push({ id, label:'Comparación ' + (periods.length), weeks:new Set(), totalCut:0, title:'' });
+  activePeriodId = id;
+  chartVisiblePeriodIds.add(id);
+  renderPeriodTargetRow();
+  syncActivePeriodInputs();
+  renderChartPeriodToggles(); renderChartModeToggle();
+  renderWeekChips();
+  renderDashboard();
+}
+function removeComparisonPeriod(id){
+  periods = periods.filter(p => p.id !== id);
+  chartVisiblePeriodIds.delete(id);
+  if(activePeriodId === id) activePeriodId = 'p0';
+  renderPeriodTargetRow();
+  syncActivePeriodInputs();
+  renderChartPeriodToggles(); renderChartModeToggle();
+  renderWeekChips();
+  renderDashboard();
+}
+function setActivePeriod(id){
+  activePeriodId = id;
+  renderPeriodTargetRow();
+  syncActivePeriodInputs();
+  renderWeekChips();
+}
+function syncActivePeriodInputs(){
+  const p = getActivePeriod();
+  activePeriodTitle.value = p.title || '';
+  activePeriodCut.value = p.totalCut || '';
+}
+activePeriodTitle.addEventListener('input', (e) => { getActivePeriod().title = e.target.value; renderPeriodTargetRow(); renderDashboard(); });
+activePeriodCut.addEventListener('input', (e) => { getActivePeriod().totalCut = Number(e.target.value) || 0; renderDashboard(); });
+
+function renderPeriodTargetRow(){
+  periodTargetRow.innerHTML = '';
+  periods.forEach((p, i) => {
+    const el = document.createElement('div');
+    el.className = 'period-chip' + (p.id === activePeriodId ? ' active' : '');
+    if(p.id === activePeriodId) el.style.boxShadow = '0 0 0 2px ' + PERIOD_COLORS[i] + ' inset';
+    const label = i === 0 ? 'Principal' : ('Comparación ' + i);
+    el.innerHTML = '<span class="dot" style="background:' + PERIOD_COLORS[i] + ';"></span>' +
+      '<span class="txt"><b>' + label + '</b><small>' + (periodDisplayLabel(p) || 'sin semanas') + '</small></span>';
+    el.addEventListener('click', (ev) => { if(ev.target.classList.contains('rm')) return; setActivePeriod(p.id); });
+    if(i > 0){
+      const rm = document.createElement('span');
+      rm.className = 'rm';
+      rm.textContent = '×';
+      rm.addEventListener('click', (ev) => { ev.stopPropagation(); removeComparisonPeriod(p.id); });
+      el.appendChild(rm);
+    }
+    periodTargetRow.appendChild(el);
+  });
+  if(periods.length < 4){
+    const addBtn = document.createElement('button');
+    addBtn.className = 'add-period';
+    addBtn.textContent = '+ Agregar período de comparación';
+    addBtn.addEventListener('click', addComparisonPeriod);
+    periodTargetRow.appendChild(addBtn);
+  }
+}
+
+function renderMonthChips(){
+  if(!monthOrder.length){ monthSection.classList.add('hidden'); return; }
+  monthSection.classList.remove('hidden');
+  monthChips.innerHTML = '';
+  monthOrder.forEach(mk => {
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = monthLabels[mk];
+    btn.style.background = '#C98A2C22';
+    btn.style.color = '#C98A2C';
+    btn.addEventListener('click', () => {
+      const weeks = weekOrder.filter(w => weekToMonth[w] === mk);
+      const p = getActivePeriod();
+      p.weeks = new Set(weeks);
+      p.title = monthLabels[mk];
+      syncActivePeriodInputs();
+      renderPeriodTargetRow();
+      renderWeekChips();
+      renderDashboard();
+    });
+    monthChips.appendChild(btn);
+  });
+}
+
+function renderWeekPresets(){
+  const n = weekOrder.length;
+  const presets = [
+    { label: 'Última semana', fn: () => weekOrder.slice(Math.max(0,n-1)) },
+    { label: 'Últimas 2 semanas', fn: () => weekOrder.slice(Math.max(0,n-2)) },
+    { label: 'Últimas 4 semanas', fn: () => weekOrder.slice(Math.max(0,n-4)) },
+    { label: 'Todo el período', fn: () => weekOrder.slice() }
+  ];
+  weekPresets.innerHTML = '';
+  presets.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = p.label;
+    btn.style.background = '#3F7A5622';
+    btn.style.color = '#3F7A56';
+    btn.addEventListener('click', () => {
+      const weeks = p.fn();
+      if(weeks.length){ weekFrom.value = weeks[0]; weekTo.value = weeks[weeks.length-1]; }
+      const ap = getActivePeriod();
+      ap.weeks = new Set(weeks);
+      renderPeriodTargetRow();
+      renderWeekChips();
+      renderDashboard();
+    });
+    weekPresets.appendChild(btn);
+  });
+}
+
+function selectWeekRange(fromW, toW){
+  const iFrom = weekOrder.indexOf(fromW), iTo = weekOrder.indexOf(toW);
+  if(iFrom === -1 || iTo === -1) return;
+  const lo = Math.min(iFrom, iTo), hi = Math.max(iFrom, iTo);
+  const ap = getActivePeriod();
+  ap.weeks = new Set(weekOrder.slice(lo, hi+1));
+  renderPeriodTargetRow();
+  renderWeekChips();
+  renderDashboard();
+}
+
+function renderWeekRangeSelectors(){
+  const opts = weekOrder.map(w => '<option value="' + w + '">S' + w + '</option>').join('');
+  weekFrom.innerHTML = opts;
+  weekTo.innerHTML = opts;
+  weekFrom.value = weekOrder[0];
+  weekTo.value = weekOrder[weekOrder.length-1];
+  weekFrom.onchange = () => selectWeekRange(weekFrom.value, weekTo.value);
+  weekTo.onchange = () => selectWeekRange(weekFrom.value, weekTo.value);
+}
+
+function renderWeekChips(){
+  weekChips.innerHTML = '';
+  const ap = getActivePeriod();
+  const activeIdx = periods.findIndex(p => p.id === ap.id);
+  const activeColor = PERIOD_COLORS[activeIdx] || PERIOD_COLORS[0];
+  weekOrder.forEach(w => {
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = 'S' + w;
+    if(ap.weeks.has(w)){ btn.style.background = activeColor; btn.style.color = '#fff'; }
+    else { btn.style.background = '#E3E8DF'; btn.style.color = '#6B7A6E'; }
+    btn.addEventListener('click', () => {
+      if(ap.weeks.has(w)) ap.weeks.delete(w); else ap.weeks.add(w);
+      renderPeriodTargetRow();
+      renderWeekChips();
+      renderDashboard();
+    });
+    weekChips.appendChild(btn);
+  });
+}
+
+/* ===================== AGGREGATION ===================== */
+function aggregateWeeks(rows, weeksFilter){
+  return weekOrder.filter(w => weeksFilter.has(w)).map(w => {
+    const kgScrap = rows.filter(r => r.semana === w).reduce((s,r) => s + r.peso, 0);
+    const days = daysByWeek[w] ? (daysByWeek[w].size || 5) : 5;
+    return { id: w, days, kgScrap, note: days < 5 ? (days + ' días laborales') : null };
+  });
+}
+function aggregateCategories(rows, weeksFilter, totalCutOverride){
+  const totalCut = totalCutOverride || 0;
+  const totalDays = [...weeksFilter].reduce((s,w) => s + (daysByWeek[w] ? daysByWeek[w].size : 5), 0) || 1;
+  const grouped = {};
+  rows.filter(r => weeksFilter.has(r.semana)).forEach(r => {
+    const key = r.categoria + '||' + r.subcategoria;
+    if(!grouped[key]) grouped[key] = { category: r.categoria, subcategory: r.subcategoria, kgMerma: 0 };
+    grouped[key].kgMerma += r.peso;
+  });
+  return Object.values(grouped).map(g => ({
+    category: g.category, subcategory: g.subcategory,
+    kgDay: Math.round((g.kgMerma / totalDays) * 10) / 10,
+    kgTotal: Math.round(g.kgMerma * 10) / 10,
+    pct: totalCut ? Number(((g.kgMerma / totalCut) * 100).toFixed(2)) : null
+  })).sort((a,b) => (b.pct||b.kgTotal) - (a.pct||a.kgTotal));
+}
+function aggregateCategoryTotals(rows, weeksFilter, totalCutOverride){
+  const totalCut = totalCutOverride || 0;
+  const totals = { CORTE:0, MERMA:0, PLANTA:0 };
+  let totalScrapAll = 0;
+  rows.filter(r => weeksFilter.has(r.semana)).forEach(r => {
+    if(totals[r.categoria] === undefined) totals[r.categoria] = 0;
+    totals[r.categoria] += r.peso;
+    totalScrapAll += r.peso;
+  });
+  const out = {};
+  Object.keys(totals).forEach(cat => { out[cat] = totalCut ? Number(((totals[cat]/totalCut)*100).toFixed(2)) : null; });
+  const overallPct = totalCut ? Number(((totalScrapAll/totalCut)*100).toFixed(2)) : null;
+  return { pct: out, kg: totals, overallPct, totalScrapAll: Math.round(totalScrapAll*10)/10 };
+}
+
+const STABLE_THRESHOLD_PP = 0.3;
+// Compares each comparison period (periods[1..]) against the main period (periods[0]).
+function compareAllPeriods(){
+  const main = periods[0];
+  const comps = periods.slice(1);
+  if(!comps.length) return [];
+  const mainCats = main.totalCut ? aggregateCategories(rawRows, main.weeks, main.totalCut) : null;
+  const mainMap = {};
+  if(mainCats) mainCats.forEach(c => { mainMap[c.category + '||' + c.subcategory] = c; });
+  return comps.map((cp, idx) => {
+    const label = periodDisplayLabel(cp);
+    if(!main.totalCut || !cp.totalCut){
+      return { period: cp, colorIdx: idx+1, label, status: 'missing-totals' };
+    }
+    const cpCats = aggregateCategories(rawRows, cp.weeks, cp.totalCut);
+    const cpMap = {}; cpCats.forEach(c => { cpMap[c.category + '||' + c.subcategory] = c; });
+    const allKeys = new Set([...mainCats, ...cpCats].map(c => c.category + '||' + c.subcategory));
+    const items = [...allKeys].map(key => {
+      const [category, subcategory] = key.split('||');
+      const m = mainMap[key] || { category, subcategory, kgDay:0, kgTotal:0, pct:0 };
+      const c = cpMap[key];
+      if(!c) return { category, subcategory, mainPct: m.pct, histPct: null, deltaPts: null, direction: 'sin histórico' };
+      const deltaPts = Math.round((m.pct - c.pct) * 100) / 100;
+      let direction = 'estable';
+      if(deltaPts <= -STABLE_THRESHOLD_PP) direction = 'bajó';
+      else if(deltaPts >= STABLE_THRESHOLD_PP) direction = 'subió';
+      return { category, subcategory, mainPct: m.pct, histPct: c.pct, deltaPts, direction };
+    }).sort((a,b) => Math.abs((b.deltaPts||0)) - Math.abs((a.deltaPts||0)));
+    const mainTotals = aggregateCategoryTotals(rawRows, main.weeks, main.totalCut);
+    const cpTotals = aggregateCategoryTotals(rawRows, cp.weeks, cp.totalCut);
+    const overallDeltaPts = mainTotals.overallPct !== null && cpTotals.overallPct !== null ? Math.round((mainTotals.overallPct - cpTotals.overallPct)*100)/100 : null;
+    return { period: cp, colorIdx: idx+1, label, status: 'ok', items, mainOverallPct: mainTotals.overallPct, compOverallPct: cpTotals.overallPct, overallDeltaPts };
+  });
+}
+
+/* ===================== SVG helpers ===================== */
+function polarToXY(t, r){ const a = Math.PI - t*Math.PI; return [100 + r*Math.cos(a), 100 - r*Math.sin(a)]; }
+function arcPath(t0,t1,r){ const [x0,y0]=polarToXY(t0,r); const [x1,y1]=polarToXY(t1,r); const large = (t1-t0)>0.5?1:0; return 'M '+x0+' '+y0+' A '+r+' '+r+' 0 '+large+' 1 '+x1+' '+y1; }
+function gaugeSvg(value){
+  const MAX = 6, r = 80;
+  const v = value === null ? 0 : value;
+  const t = Math.max(0, Math.min(1, v/MAX));
+  const rot = t*180 - 90;
+  return '<svg viewBox="0 0 200 115" style="width:100%;max-width:150px;">'+
+    '<path d="'+arcPath(0,1,r)+'" fill="none" stroke="#E3E8DF" stroke-width="14" stroke-linecap="round"/>'+
+    '<path d="'+arcPath(0,2/6,r)+'" fill="none" stroke="#3F7A56" stroke-width="14" opacity=".85"/>'+
+    '<path d="'+arcPath(2/6,3.5/6,r)+'" fill="none" stroke="#C98A2C" stroke-width="14" opacity=".85"/>'+
+    '<path d="'+arcPath(3.5/6,1,r)+'" fill="none" stroke="#B84A3E" stroke-width="14" opacity=".85"/>'+
+    '<g transform="rotate('+rot+' 100 100)"><line x1="100" y1="100" x2="100" y2="30" stroke="#23281F" stroke-width="3" stroke-linecap="round"/></g>'+
+    '<circle cx="100" cy="100" r="6" fill="#23281F"/></svg>';
+}
+function lineChartSvg(labels, data, color, unitSuffix, legend){
+  unitSuffix = unitSuffix || '';
+  const colors = Array.isArray(color) ? color : data.map(() => color || '#3F7A56');
+  const W = 640, H = 220, padL = 40, padR = 20, padT = 20, padB = 30;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const maxV = Math.max(1, ...data) * 1.15;
+  const minV = 0;
+  const stepX = data.length > 1 ? innerW / (data.length - 1) : 0;
+  const toXY = (i,v) => [padL + i*stepX, padT + innerH - ((v-minV)/(maxV-minV))*innerH];
+  const points = data.map((v,i) => toXY(i,v));
+  const fullPath = points.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const area = fullPath + ' L ' + points[points.length-1][0].toFixed(1) + ' ' + (padT+innerH) + ' L ' + points[0][0].toFixed(1) + ' ' + (padT+innerH) + ' Z';
+  const gridLines = [0,0.25,0.5,0.75,1].map(f => {
+    const y = padT + innerH - f*innerH;
+    const val = (minV + f*(maxV-minV)).toFixed(1);
+    return '<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="#E3E8DF" stroke-width="1"/>' +
+           '<text x="'+(padL-6)+'" y="'+(y+3)+'" font-size="9" fill="#6B7A6E" text-anchor="end" font-family="IBM Plex Mono, monospace">'+val+'</text>';
+  }).join('');
+  // Line drawn as per-segment paths so each stretch can take the color of the point it leaves from
+  let segPaths = '';
+  for(let i=0;i<points.length-1;i++){
+    segPaths += '<path d="M '+points[i][0].toFixed(1)+' '+points[i][1].toFixed(1)+' L '+points[i+1][0].toFixed(1)+' '+points[i+1][1].toFixed(1)+'" fill="none" stroke="'+(colors[i]||'#3F7A56')+'" stroke-width="2.5"/>';
+  }
+  // Each point gets a native SVG <title> — shows the exact value as a floating tooltip on hover
+  const dots = points.map((p,i) => '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="5" fill="'+(colors[i]||'#3F7A56')+'" style="cursor:pointer;"><title>' + labels[i] + ': ' + data[i] + unitSuffix + '</title></circle>').join('');
+  const xlabels = labels.map((l,i) => '<text x="'+points[i][0].toFixed(1)+'" y="'+(H-8)+'" font-size="10" fill="#6B7A6E" text-anchor="middle">'+l+'</text>').join('');
+  const svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;">' + gridLines +
+    '<path d="'+area+'" fill="'+(colors[0]||'#3F7A56')+'" opacity="0.10"/>' +
+    segPaths + dots + xlabels + '</svg>';
+  const legendHtml = (legend && legend.length) ? '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">' +
+    legend.map(li => '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#6B7A6E;"><span style="width:9px;height:9px;border-radius:50%;background:'+li.color+';display:inline-block;"></span>'+li.label+'</span>').join('') + '</div>' : '';
+  return svg + legendHtml;
+}
+
+/* ===================== ADAPTIVE TREND CHART ===================== */
+function minWeekIndex(weeksSet){
+  if(!weeksSet || !weeksSet.size) return Infinity;
+  return Math.min(...[...weeksSet].map(w => weekOrder.indexOf(w)));
+}
+function chronoOrderedPeriods(periodList){
+  const list = periodList || periods;
+  return list.map((p) => ({ p, i: periods.indexOf(p) })).sort((a,b) => minWeekIndex(a.p.weeks) - minWeekIndex(b.p.weeks));
+}
+
+function renderChartMonthChips(){
+  chartMonthChips.innerHTML = '';
+  if(!monthOrder.length){
+    chartMonthChips.innerHTML = '<span style="font-size:12px;color:var(--muted);">No hay columna de fecha mapeada, así que no se detectaron meses.</span>';
+    return;
+  }
+  monthOrder.forEach(mk => {
+    const on = chartCustomMonths && chartCustomMonths.has(mk);
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = monthLabels[mk];
+    btn.style.background = on ? '#6B5B95' : '#E3E8DF';
+    btn.style.color = on ? '#fff' : '#6B7A6E';
+    btn.addEventListener('click', () => {
+      if(!chartCustomMonths) chartCustomMonths = new Set();
+      if(chartCustomMonths.has(mk)) chartCustomMonths.delete(mk); else chartCustomMonths.add(mk);
+      if(!chartCustomMonths.size) chartCustomMonths = null;
+      renderChartMonthChips();
+      renderChartModeToggle();
+      renderTrendChartOnly();
+    });
+    chartMonthChips.appendChild(btn);
+  });
+}
+chartCustomResetBtn.addEventListener('click', () => {
+  chartCustomMonths = null;
+  renderChartMonthChips();
+  renderChartModeToggle();
+  renderTrendChartOnly();
+});
+
+function renderChartPeriodToggles(){
+  if(periods.length <= 1){ chartPeriodToggles.classList.add('hidden'); chartPeriodToggles.innerHTML=''; return; }
+  chartPeriodToggles.classList.remove('hidden');
+  chartPeriodToggles.innerHTML = '';
+  const label = document.createElement('span');
+  label.style.cssText = 'font-size:11px;color:var(--muted);align-self:center;margin-right:2px;';
+  label.textContent = 'Ver en el gráfico:';
+  chartPeriodToggles.appendChild(label);
+  periods.forEach((p, i) => {
+    const on = chartVisiblePeriodIds.has(p.id);
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = (i===0?'Principal':('Comp. '+i)) + ' · ' + periodDisplayLabel(p);
+    btn.style.background = on ? PERIOD_COLORS[i] : '#E3E8DF';
+    btn.style.color = on ? '#fff' : '#6B7A6E';
+    btn.addEventListener('click', () => {
+      if(chartVisiblePeriodIds.has(p.id)){ if(chartVisiblePeriodIds.size>1) chartVisiblePeriodIds.delete(p.id); }
+      else chartVisiblePeriodIds.add(p.id);
+      renderChartPeriodToggles(); renderChartModeToggle();
+      renderTrendChartOnly();
+    });
+    chartPeriodToggles.appendChild(btn);
+  });
+}
+
+function renderChartModeToggle(){
+  const visibleCount = periods.filter(p => chartVisiblePeriodIds.has(p.id)).length || 1;
+  if(periods.length <= 1 || visibleCount <= 1 || (chartCustomMonths && chartCustomMonths.size)){
+    chartModeToggle.classList.add('hidden'); chartModeToggle.innerHTML = ''; return;
+  }
+  chartModeToggle.classList.remove('hidden');
+  chartModeToggle.innerHTML = '';
+  const label = document.createElement('span');
+  label.style.cssText = 'font-size:11px;color:var(--muted);align-self:center;margin-right:2px;';
+  label.textContent = 'Ver:';
+  chartModeToggle.appendChild(label);
+  [['global','Total global por mes'],['weekly','Detalle por semana']].forEach(([mode,txt]) => {
+    const on = trendChartMode === mode;
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = txt;
+    btn.style.background = on ? '#23281F' : '#E3E8DF';
+    btn.style.color = on ? '#EDF1EC' : '#6B7A6E';
+    btn.addEventListener('click', () => { trendChartMode = mode; renderChartModeToggle(); renderTrendChartOnly(); });
+    chartModeToggle.appendChild(btn);
+  });
+}
+
+const CHART_MONTH_PALETTE = ['#3F7A56','#C98A2C','#6B5B95','#B84A3E','#2E86AB','#8E5572','#5C7A29','#A6631C'];
+function monthColor(mk){ const idx = monthOrder.indexOf(mk); return CHART_MONTH_PALETTE[idx % CHART_MONTH_PALETTE.length] || '#3F7A56'; }
+
+function computeTrendChart(){
+  if(chartCustomMonths && chartCustomMonths.size){
+    const customWeeks = weekOrder.filter(w => chartCustomMonths.has(weekToMonth[w]));
+    const weeks = aggregateWeeks(rawRows, new Set(customWeeks));
+    const sortedMonths = [...chartCustomMonths].sort();
+    const monthLabelsTxt = sortedMonths.map(mk => monthLabels[mk]).join(', ');
+    return {
+      title: 'Tendencia personalizada — Kg/día de scrap (' + monthLabelsTxt + ')',
+      labels: weeks.map(w => 'S' + w.id),
+      data: weeks.map(w => Math.round((w.kgScrap / w.days) * 10) / 10),
+      unit: ' kg/día',
+      color: weeks.map(w => monthColor(weekToMonth[w.id])),
+      legend: sortedMonths.map(mk => ({ label: monthLabels[mk], color: monthColor(mk) })),
+      note: 'Selección independiente de la comparación de períodos.'
+    };
+  }
+  const visible = periods.filter(p => chartVisiblePeriodIds.has(p.id));
+  const effective = visible.length ? visible : [periods[0]];
+
+  if(effective.length <= 1){
+    const p = effective[0];
+    const weeks = aggregateWeeks(rawRows, p.weeks);
+    const monthsInPeriod = [...new Set(weeks.map(w => weekToMonth[w.id]).filter(Boolean))];
+    const multiMonth = monthsInPeriod.length > 1;
+    return {
+      title: 'Tendencia semanal — Kg/día de scrap' + (periods.length>1 ? ' (' + periodDisplayLabel(p) + ')' : ''),
+      labels: weeks.map(w => 'S' + w.id),
+      data: weeks.map(w => Math.round((w.kgScrap / w.days) * 10) / 10),
+      unit: ' kg/día',
+      color: multiMonth ? weeks.map(w => monthColor(weekToMonth[w.id])) : (PERIOD_COLORS[periods.indexOf(p)] || PERIOD_COLORS[0]),
+      legend: multiMonth ? monthsInPeriod.map(mk => ({ label: monthLabels[mk], color: monthColor(mk) })) : null,
+      note: ''
+    };
+  }
+  const ordered = chronoOrderedPeriods(effective);
+
+  if(trendChartMode === 'weekly'){
+    const allWeeks = [];
+    ordered.forEach(({p}) => { p.weeks.forEach(w => allWeeks.push(w)); });
+    const weekSet = new Set(allWeeks);
+    const weeksChrono = weekOrder.filter(w => weekSet.has(w));
+    const owningColor = (w) => {
+      const found = ordered.find(({p}) => p.weeks.has(w));
+      return found ? (PERIOD_COLORS[found.i] || PERIOD_COLORS[0]) : PERIOD_COLORS[0];
+    };
+    const weeksData = aggregateWeeks(rawRows, new Set(weeksChrono));
+    const legend = ordered.map(({p,i}) => ({ label: (i===0?'Principal':('Comp. '+i)) + ' · ' + periodDisplayLabel(p), color: PERIOD_COLORS[i] || PERIOD_COLORS[0] }));
+    return {
+      title: 'Tendencia por semana — Kg/día de scrap (comparando períodos)',
+      labels: weeksData.map(w => 'S' + w.id),
+      data: weeksData.map(w => Math.round((w.kgScrap / w.days) * 10) / 10),
+      unit: ' kg/día',
+      color: weeksData.map(w => owningColor(w.id)),
+      legend,
+      note: ''
+    };
+  }
+
+  const labels = ordered.map(({p}) => periodDisplayLabel(p));
+  const missing = [];
+  const data = ordered.map(({p,i}) => {
+    if(!p.totalCut){ missing.push(i===0?'Principal':('Comparación '+i)); return 0; }
+    const t = aggregateCategoryTotals(rawRows, p.weeks, p.totalCut);
+    return t.overallPct === null ? 0 : t.overallPct;
+  });
+  const pointColors = ordered.map(({p,i}) => PERIOD_COLORS[i] || PERIOD_COLORS[0]);
+  const legend = ordered.map(({p,i}) => ({ label: (i===0?'Principal':('Comp. '+i)) + ' · ' + periodDisplayLabel(p), color: PERIOD_COLORS[i] || PERIOD_COLORS[0] }));
+  return {
+    title: 'Tendencia entre períodos — % de scrap total',
+    labels, data, unit: '%', color: pointColors, legend,
+    note: missing.length ? ('Falta el kg cortado de: ' + missing.join(', ') + ' — se muestra como 0%.') : ''
+  };
+}
+
+function renderTrendChartOnly(){
+  try{
+    const chart = computeTrendChart();
+    trendChartTitle.textContent = chart.title;
+    trendChartBox.innerHTML = chart.data.length ? lineChartSvg(chart.labels, chart.data, chart.color, chart.unit, chart.legend) : '<p style="font-size:13px;color:var(--muted);">Sin semanas seleccionadas.</p>';
+    trendChartNote.textContent = chart.note;
+  }catch(e){ console.error('trend error', e); trendChartBox.innerHTML = ''; }
+}
+
+/* ===================== DASHBOARD ===================== */
+function renderDashboard(){
+  if(!rawRows.length){ dashEmpty.classList.remove('hidden'); dashContent.classList.add('hidden'); return; }
+  dashEmpty.classList.add('hidden'); dashContent.classList.remove('hidden');
+  const main = periods[0];
+
+  try{ renderDayDetailQuickChips(); }catch(e){ console.error('day detail quick chips error', e); }
+
+  try{
+    const weeks = aggregateWeeks(rawRows, main.weeks);
+    const totalScrap = weeks.reduce((s,w) => s + w.kgScrap, 0);
+    const totalDays = weeks.reduce((s,w) => s + w.days, 0) || 1;
+    const totalsForStat = aggregateCategoryTotals(rawRows, main.weeks, main.totalCut);
+    statGrid.innerHTML =
+      '<div class="kpi" style="background:#3F7A5622;"><b style="color:#3F7A56;">' + (totalsForStat.overallPct === null ? 'N/D' : totalsForStat.overallPct + '%') + '</b><span>Scrap total</span></div>' +
+      '<div class="kpi"><b>' + Math.round(totalScrap).toLocaleString() + '</b><span>Kg scrap</span></div>' +
+      '<div class="kpi"><b>' + (main.totalCut ? main.totalCut.toLocaleString() : '—') + '</b><span>Kg cortados</span></div>' +
+      '<div class="kpi"><b>' + Math.round(totalScrap/totalDays * 10)/10 + '</b><span>Kg/día prom.</span></div>';
+    gaugeRow.innerHTML = ['CORTE','MERMA','PLANTA'].map(cat => {
+      const v = totalsForStat.pct[cat];
+      const color = v === null ? '#6B7A6E' : (v < 2 ? '#3F7A56' : v < 3.5 ? '#C98A2C' : '#B84A3E');
+      return '<div class="gauge-box">' + gaugeSvg(v) +
+        '<div class="gauge-val" style="color:'+color+'">' + (v === null ? '—' : v.toFixed(1) + '%') + '</div>' +
+        '<div class="gauge-lbl">' + cat + '</div></div>';
+    }).join('');
+  }catch(e){ console.error('kpi error', e); statGrid.innerHTML = ''; gaugeRow.innerHTML = ''; }
+
+  try{ renderPeriodTotalsRow(); }catch(e){ console.error('period totals error', e); periodTotalsRow.innerHTML = ''; }
+
+  try{
+    renderChartPeriodToggles(); renderChartModeToggle();
+    renderTrendChartOnly();
+  }catch(e){ console.error('trend error', e); trendChartBox.innerHTML = ''; }
+
+  try{ renderCompareTable(); }catch(e){ console.error('compare table error', e); compareTableBox.innerHTML = ''; }
+}
+catFilter.addEventListener('change', renderDashboard);
+
+function filteredPeriodTotal(period, filterCat){
+  if(filterCat === 'TODAS'){
+    const t = aggregateCategoryTotals(rawRows, period.weeks, period.totalCut);
+    return { kg: t.totalScrapAll, pct: t.overallPct };
+  }
+  const cats = aggregateCategories(rawRows, period.weeks, period.totalCut).filter(c => c.category === filterCat);
+  const kg = Math.round(cats.reduce((s,c) => s + c.kgTotal, 0) * 10) / 10;
+  const pct = period.totalCut ? Math.round((kg/period.totalCut)*10000)/100 : null;
+  return { kg, pct };
+}
+
+function renderPeriodTotalsRow(){
+  if(!rawRows.length){ periodTotalsRow.innerHTML = ''; return; }
+  const filter = catFilter.value;
+  const ordered = chronoOrderedPeriods();
+  periodTotalsRow.innerHTML = ordered.map(({p,i}) => {
+    const t = filteredPeriodTotal(p, filter);
+    const roleLabel = i===0 ? 'Principal' : ('Comp. '+i);
+    const color = PERIOD_COLORS[i] || PERIOD_COLORS[0];
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+color+'18;border:1px solid '+color+'55;border-radius:999px;padding:6px 12px;font-size:12px;">' +
+      '<b style="color:'+color+';">'+roleLabel+' · '+periodDisplayLabel(p)+'</b>' +
+      '<span style="font-family:IBM Plex Mono,monospace;">'+t.kg.toLocaleString()+' kg'+(t.pct!==null?' · '+t.pct+'%':'')+'</span></span>';
+  }).join('');
+}
+
+function renderCompareTable(){
+  const filter = catFilter.value;
+  const main = periods[0];
+  const comps = periods.slice(1);
+
+  if(!comps.length){
+    const cats = aggregateCategories(rawRows, main.weeks, main.totalCut).filter(c => filter === 'TODAS' || c.category === filter);
+    if(!cats.length){ compareTableBox.innerHTML = '<p style="font-size:13px;color:var(--muted);">Sin datos para este filtro.</p>'; return; }
+    const rowsHtml = cats.map(c => '<tr style="border-bottom:1px solid var(--track);">' +
+      '<td style="padding:7px 8px;"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + (CATCOLOR[c.category]||'#3F7A56') + '22;color:' + (CATCOLOR[c.category]||'#3F7A56') + ';">' + c.category + '</span> ' + c.subcategory + '</td>' +
+      '<td style="padding:7px 8px;font-family:IBM Plex Mono,monospace;text-align:right;">' + (c.pct===null?'N/D':c.pct+'%') + '</td>' +
+    '</tr>').join('');
+    const totalPct = cats.reduce((s,c) => s + (c.pct||0), 0);
+    const anyNull = cats.some(c => c.pct===null);
+    compareTableBox.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+      '<thead><tr style="color:' + PERIOD_COLORS[0] + ';text-transform:uppercase;font-size:11px;letter-spacing:.05em;">' +
+        '<th style="text-align:left;padding:7px 8px;">Subcategoría</th><th style="text-align:right;padding:7px 8px;">' + periodDisplayLabel(main) + '</th>' +
+      '</tr></thead><tbody>' + rowsHtml +
+      '<tr style="border-top:2px solid var(--ink);"><td style="padding:8px;font-weight:700;">Total' + (filter!=='TODAS' ? ' ('+filter+')' : '') + '</td>' +
+      '<td style="padding:8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:700;">' + (anyNull && !totalPct ? 'N/D' : Math.round(totalPct*100)/100 + '%') + '</td></tr>' +
+      '</tbody></table>' +
+      '<p style="font-size:12px;color:var(--muted);margin-top:8px;">Agrega un período de comparación en "Cargar datos" para ver diferencias entre períodos.</p>';
+    return;
+  }
+
+  const compared = compareAllPeriods();
+  const mainCats = aggregateCategories(rawRows, main.weeks, main.totalCut);
+  const allKeys = new Set(mainCats.map(c => c.category + '||' + c.subcategory));
+  compared.forEach(cmp => { if(cmp.status === 'ok') cmp.items.forEach(it => allKeys.add(it.category + '||' + it.subcategory)); });
+  const mainMap = {}; mainCats.forEach(c => { mainMap[c.category + '||' + c.subcategory] = c; });
+
+  let rows = [...allKeys].map(key => {
+    const [category, subcategory] = key.split('||');
+    return { category, subcategory, mainPct: mainMap[key] ? mainMap[key].pct : null };
+  }).filter(r => filter === 'TODAS' || r.category === filter);
+  if(!rows.length){ compareTableBox.innerHTML = '<p style="font-size:13px;color:var(--muted);">Sin datos para este filtro.</p>'; return; }
+
+  // Chronological order: oldest period first, most recent last (independent of Principal/Comparación role)
+  const orderedCols = chronoOrderedPeriods().map(({p, i}) => {
+    if(i === 0) return { p, i, isMain: true, label: periodDisplayLabel(p), color: PERIOD_COLORS[0] };
+    const cmp = compared.find(c => c.period.id === p.id);
+    return { p, i, isMain: false, label: periodDisplayLabel(p), color: PERIOD_COLORS[i] || PERIOD_COLORS[0], cmp };
+  });
+
+  const headerCells = ['<th style="text-align:left;padding:7px 8px;color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.05em;">Subcategoría</th>'];
+  orderedCols.forEach(col => {
+    headerCells.push('<th style="text-align:right;padding:7px 8px;color:'+col.color+';text-transform:uppercase;font-size:11px;letter-spacing:.05em;">' + col.label + '</th>');
+    if(!col.isMain) headerCells.push('<th style="text-align:right;padding:7px 8px;color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.05em;">Δ</th>');
+  });
+
+  const rowsHtml = rows.map(r => {
+    let cells = '<td style="padding:7px 8px;"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:' + (CATCOLOR[r.category]||'#3F7A56') + '22;color:' + (CATCOLOR[r.category]||'#3F7A56') + ';">' + r.category + '</span> ' + r.subcategory + '</td>';
+    orderedCols.forEach(col => {
+      if(col.isMain){
+        cells += '<td style="padding:7px 8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:600;">' + (r.mainPct===null?'N/D':r.mainPct+'%') + '</td>';
+        return;
+      }
+      if(!col.cmp || col.cmp.status !== 'ok'){ cells += '<td colspan="2" style="padding:7px 8px;text-align:right;color:var(--muted);font-size:12px;">falta kg cortado</td>'; return; }
+      const it = col.cmp.items.find(x => x.category === r.category && x.subcategory === r.subcategory);
+      const histPct = it ? it.histPct : null;
+      const deltaPts = it ? it.deltaPts : null;
+      const direction = it ? it.direction : 'sin histórico';
+      const color = direction === 'subió' ? '#B84A3E' : direction === 'bajó' ? '#3F7A56' : '#6B7A6E';
+      const arrow = direction === 'subió' ? '↑' : direction === 'bajó' ? '↓' : '≈';
+      cells += '<td style="padding:7px 8px;font-family:IBM Plex Mono,monospace;text-align:right;">' + (histPct===null?'N/D':histPct+'%') + '</td>';
+      cells += '<td style="padding:7px 8px;font-family:IBM Plex Mono,monospace;text-align:right;color:'+color+';font-weight:600;">' + (deltaPts===null?'—':(arrow+' '+Math.abs(deltaPts))) + '</td>';
+    });
+    return '<tr style="border-bottom:1px solid var(--track);">' + cells + '</tr>';
+  }).join('');
+
+  // Totals footer — sums the currently filtered rows per column, updates live with the category filter
+  let totalsCells = '<td style="padding:8px;font-weight:700;">Total' + (filter!=='TODAS' ? ' ('+filter+')' : '') + '</td>';
+  orderedCols.forEach(col => {
+    if(col.isMain){
+      const t = rows.reduce((s,r) => s + (r.mainPct||0), 0);
+      totalsCells += '<td style="padding:8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:700;">' + (Math.round(t*100)/100) + '%</td>';
+      return;
+    }
+    if(!col.cmp || col.cmp.status !== 'ok'){ totalsCells += '<td colspan="2" style="padding:8px;text-align:right;color:var(--muted);font-size:12px;">falta kg cortado</td>'; return; }
+    let histTotal = 0, deltaTotal = 0;
+    rows.forEach(r => {
+      const it = col.cmp.items.find(x => x.category === r.category && x.subcategory === r.subcategory);
+      if(it && it.histPct !== null) histTotal += it.histPct;
+      if(it && it.deltaPts !== null) deltaTotal += it.deltaPts;
+    });
+    const dColor = deltaTotal > 0.05 ? '#B84A3E' : deltaTotal < -0.05 ? '#3F7A56' : '#6B7A6E';
+    const dArrow = deltaTotal > 0.05 ? '↑' : deltaTotal < -0.05 ? '↓' : '≈';
+    totalsCells += '<td style="padding:8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:700;">' + (Math.round(histTotal*100)/100) + '%</td>';
+    totalsCells += '<td style="padding:8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:700;color:'+dColor+';">' + dArrow + ' ' + Math.abs(Math.round(deltaTotal*100)/100) + '</td>';
+  });
+
+  compareTableBox.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:' + (280 + (orderedCols.length)*180) + 'px;">' +
+    '<thead><tr>' + headerCells.join('') + '</tr></thead><tbody>' + rowsHtml +
+    '<tr style="border-top:2px solid var(--ink);">' + totalsCells + '</tr>' +
+    '</tbody></table></div>';
+}
+
+/* ===================== CONCLUSIONS (unified, calm tone, elaborated, multi-period) ===================== */
+const SYSTEM_PROMPT = `Eres un asistente que redacta conclusiones ejecutivas de scrap para una planta de fabricación de sacos industriales (BigBags), dirigidas a GERENCIA GENERAL sin conocimiento técnico del proceso. "Scrap" es el material perdido o desechado en producción; se divide en tres categorías: CORTE, MERMA y PLANTA (MERMA es solo una de las tres categorías, no un sinónimo de scrap en general — úsala solo cuando te refieras a esa categoría específica). El tono debe ser calmado, claro y fácil de entender — nunca alarmista, aunque un número parezca grande. Evita signos de exclamación y lenguaje dramático.
+Reglas:
+- Recibirás datos del período PRINCIPAL ("mainOverallPct", "categoryMix") y opcionalmente un array "comparisons" con 0 a 3 períodos de comparación, cada uno con "label", "status" ("ok" o "missing-totals") e "items" (diferencias por subcategoría: "pct" del principal, "histPct" del período comparado, "deltaPts", "direction"). También recibirás "chronoSeries": la lista de TODOS los períodos (principal + comparaciones) ordenados CRONOLÓGICAMENTE de más antiguo a más reciente, cada uno con su "label" y "pct" — úsala para decidir si la tendencia es al alza o a la baja; NUNCA uses el orden en que aparecen en "comparisons" para eso, porque ese orden no es cronológico.
+- La comparación es OPCIONAL. Si "comparisons" está vacío, redacta una conclusión completa analizando solo el período principal.
+- Escribe una conclusión de 4 a 6 frases, con AL MENOS una frase de comparación directa entre subcategorías y período en este estilo exacto: "El scrap de [SUBCATEGORÍA] tuvo un aumento de [X] puntos porcentuales por encima de [período]" (o "por debajo de" si bajó). Cubre: (1) % total del principal y qué tan sano es, (2) reparto CORTE/MERMA/PLANTA usando categoryMix, (3) subcategoría de mayor peso, (4) si hay comparaciones, el % de cada período en orden cronológico (usa chronoSeries) y si la tendencia real (de más antiguo a más reciente) sube, baja o fluctúa — con al menos una comparación de subcategoría específica en el estilo pedido, (5) cierre con recomendación breve.
+- VARÍA la redacción de las comparaciones entre "tuvo un aumento de X puntos por encima de", "subió X puntos frente a, pasando de Y% a Z%", "se observa un incremento de X puntos en...", y sus equivalentes en negativo ("bajó", "se redujo", "disminución de X puntos") — no repitas la misma estructura de frase dos veces seguidas.
+- Genera una lista de "puntos a destacar" de 4 a 6, con los cambios más notorios de cada período comparado (o de las subcategorías de mayor peso si no hay comparaciones), usando la misma variedad de redacción.
+- NO generes información sobre días específicos ni fechas — esa parte del informe se calcula por separado con datos reales.
+Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:
+{"conclusion":"","points":["punto 1","punto 2"]}`;
+
+function setStatus(msg, kind){ statusEl.textContent = msg || ''; statusEl.className = 'status' + (kind ? ' ' + kind : ''); }
+
+function computeCriticalDays(period, limit){
+  limit = limit || 3;
+  const rows = rawRows.filter(r => period.weeks.has(r.semana) && r.fecha);
+  if(!rows.length) return null;
+  const byDate = {};
+  rows.forEach(r => {
+    if(!byDate[r.fecha]) byDate[r.fecha] = { fecha: r.fecha, total: 0, byCat: {} };
+    byDate[r.fecha].total += r.peso;
+    const key = r.categoria + '||' + r.subcategoria;
+    byDate[r.fecha].byCat[key] = (byDate[r.fecha].byCat[key] || 0) + r.peso;
+  });
+  const days = Object.values(byDate);
+  if(days.length < 3) return null; // not enough days to establish a meaningful average
+  const avg = days.reduce((s,d) => s + d.total, 0) / days.length;
+  const critical = days.map(d => {
+    const top = Object.entries(d.byCat).sort((a,b) => b[1]-a[1])[0];
+    const [cat, sub] = top[0].split('||');
+    const topKg = top[1];
+    return {
+      fecha: d.fecha,
+      total: Math.round(d.total*10)/10,
+      overAvgPct: avg ? Math.round(((d.total-avg)/avg)*100) : null,
+      topCategory: cat, topSubcategory: sub,
+      topKg: Math.round(topKg*10)/10,
+      topSharePct: d.total ? Math.round((topKg/d.total)*100) : 0
+    };
+  }).filter(d => avg && d.total > avg * 1.25)
+    .sort((a,b) => b.total - a.total)
+    .slice(0, limit);
+  return { avg: Math.round(avg*10)/10, days: critical };
+}
+
+/* ===================== DAY DETAIL DRILL-DOWN ===================== */
+function allDatesWithData(){
+  return [...new Set(rawRows.filter(r => r.fecha).map(r => r.fecha))].sort().reverse();
+}
+function renderDayDetailDateOptions(){
+  const dates = allDatesWithData();
+  dayDetailSelect.innerHTML = '<option value="">— elige una fecha —</option>' +
+    dates.map(d => '<option value="' + d + '">' + d + '</option>').join('');
+  if(!dates.length){
+    dayDetailSelect.innerHTML = '<option value="">Sin columna de fecha mapeada</option>';
+  }
+}
+function renderDayDetailQuickChips(){
+  dayDetailQuick.innerHTML = '';
+  if(!periods.length) return;
+  const crit = computeCriticalDays(periods[0], 5);
+  if(!crit || !crit.days.length){
+    dayDetailQuick.innerHTML = '<span style="font-size:12px;color:var(--muted);">Sin días destacados detectados todavía en el período principal.</span>';
+    return;
+  }
+  crit.days.forEach(d => {
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = d.fecha + ' (' + d.total + ' kg)';
+    btn.style.background = '#B84A3E22';
+    btn.style.color = '#B84A3E';
+    btn.addEventListener('click', () => { dayDetailSelect.value = d.fecha; renderDayDetail(d.fecha); });
+    dayDetailQuick.appendChild(btn);
+  });
+}
+dayDetailSelect.addEventListener('change', (e) => renderDayDetail(e.target.value));
+
+function renderDayDetail(fecha){
+  if(!fecha){ dayDetailBox.innerHTML = '<p style="font-size:13px;color:var(--muted);">Elige una fecha arriba (o un día destacado) para ver su detalle por categoría y subcategoría.</p>'; return; }
+  const rows = rawRows.filter(r => r.fecha === fecha);
+  if(!rows.length){ dayDetailBox.innerHTML = '<p style="font-size:13px;color:var(--muted);">Sin registros para esa fecha.</p>'; return; }
+  const grouped = {};
+  let total = 0;
+  rows.forEach(r => {
+    const key = r.categoria + '||' + r.subcategoria;
+    grouped[key] = (grouped[key] || 0) + r.peso;
+    total += r.peso;
+  });
+  const items = Object.entries(grouped).map(([key, kg]) => {
+    const [category, subcategory] = key.split('||');
+    return { category, subcategory, kg: Math.round(kg*10)/10, pct: total ? Math.round((kg/total)*1000)/10 : 0 };
+  }).sort((a,b) => b.kg - a.kg);
+  const maxKg = Math.max(...items.map(i => i.kg), 1);
+  const rowsHtml = items.map(it => {
+    const color = CATCOLOR[it.category] || '#3F7A56';
+    const widthPct = Math.max(4, (it.kg/maxKg)*100);
+    return '<div style="margin-bottom:8px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">' +
+        '<span><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:'+color+'22;color:'+color+';">'+it.category+'</span> '+it.subcategory+'</span>' +
+        '<b style="font-family:IBM Plex Mono,monospace;">'+it.kg+' kg ('+it.pct+'%)</b>' +
+      '</div>' +
+      '<div style="background:var(--track);border-radius:999px;height:8px;overflow:hidden;"><div style="width:'+widthPct+'%;height:100%;background:'+color+';border-radius:999px;"></div></div>' +
+    '</div>';
+  }).join('');
+  dayDetailBox.innerHTML =
+    '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">' + fecha + ' — total: ' + Math.round(total*10)/10 + ' kg de scrap</div>' +
+    rowsHtml;
+}
+
+
+function buildCriticalDaysNarrative(periodLabel, crit){
+  if(!crit || !crit.days.length) return [];
+  const openers = [
+    'el día que más rompió la tendencia promedio de scrap fue el',
+    'también se alejó del promedio el día',
+    'otro día fuera de lo habitual fue el'
+  ];
+  const sentences = crit.days.map((d, i) => {
+    const opener = i === 0
+      ? ('Durante ' + periodLabel + ', ' + openers[0] + ' ' + d.fecha)
+      : (openers[Math.min(i, openers.length-1)] + ' ' + d.fecha);
+    return opener + ', con un scrap total generado ese día de ' + d.total + ' kg (' + (d.overAvgPct>0?'+':'') + d.overAvgPct + '% sobre el promedio diario de ' + crit.avg + ' kg), donde ' + d.topKg + ' kg (' + d.topSharePct + '%) pertenecen a ' + d.topCategory + ' · ' + d.topSubcategory + '.';
+  });
+  sentences.push('Vale la pena revisar si en esas fechas hubo un pedido especial, novedades con rollos de material u otra situación operativa puntual que explique el pico.');
+  return sentences;
+}
+
+const COMPARISON_TEMPLATES_UP = [
+  (cat,sub,delta,period,from,to) => 'El scrap de ' + cat + ' · ' + sub + ' tuvo un aumento de ' + delta + ' puntos porcentuales por encima de ' + period + ' (' + from + '% → ' + to + '%).',
+  (cat,sub,delta,period,from,to) => cat + ' · ' + sub + ' subió ' + delta + ' puntos porcentuales frente a ' + period + ', pasando de ' + from + '% a ' + to + '%.',
+  (cat,sub,delta,period,from,to) => 'Se observa un incremento de ' + delta + ' puntos en ' + cat + ' · ' + sub + ' en comparación con ' + period + ' (' + from + '% → ' + to + '%).'
+];
+const COMPARISON_TEMPLATES_DOWN = [
+  (cat,sub,delta,period,from,to) => 'El scrap de ' + cat + ' · ' + sub + ' bajó ' + delta + ' puntos porcentuales por debajo de ' + period + ' (' + from + '% → ' + to + '%).',
+  (cat,sub,delta,period,from,to) => cat + ' · ' + sub + ' se redujo ' + delta + ' puntos porcentuales frente a ' + period + ', pasando de ' + from + '% a ' + to + '%.',
+  (cat,sub,delta,period,from,to) => 'Se observa una disminución de ' + delta + ' puntos en ' + cat + ' · ' + sub + ' en comparación con ' + period + ' (' + from + '% → ' + to + '%).'
+];
+function comparisonSentence(it, periodLabel, idx){
+  const templates = it.direction === 'subió' ? COMPARISON_TEMPLATES_UP : COMPARISON_TEMPLATES_DOWN;
+  const fn = templates[idx % templates.length];
+  return fn(it.category, it.subcategory, Math.abs(it.deltaPts), periodLabel, it.histPct, it.mainPct);
+}
+
+function buildLocalConclusions(){
+  const main = periods[0];
+  const weeks = aggregateWeeks(rawRows, main.weeks);
+  const categories = aggregateCategories(rawRows, main.weeks, main.totalCut);
+  const totals = aggregateCategoryTotals(rawRows, main.weeks, main.totalCut);
+  const compared = compareAllPeriods();
+  const label = periodDisplayLabel(main);
+
+  const biggestKgItem = [...categories].sort((a,b) => b.kgTotal - a.kgTotal)[0];
+  const sentences = [];
+
+  if(totals.overallPct !== null){
+    sentences.push('El scrap total de ' + label + ' fue ' + totals.overallPct + '% del total cortado (' + totals.totalScrapAll.toLocaleString() + ' kg de ' + main.totalCut.toLocaleString() + ' kg).');
+  } else {
+    sentences.push('No se puede calcular el % total porque falta el dato de kg cortados del período principal.');
+  }
+
+  const mixParts = ['CORTE','MERMA','PLANTA'].map(cat => {
+    const kg = categories.filter(c => c.category === cat).reduce((s,c) => s + c.kgTotal, 0);
+    const share = totals.totalScrapAll ? Math.round((kg/totals.totalScrapAll)*100) : 0;
+    return cat + ' ' + share + '%';
+  });
+  sentences.push('Del total de scrap, la distribución fue: ' + mixParts.join(', ') + '.');
+
+  if(biggestKgItem) sentences.push('La subcategoría con mayor peso es ' + biggestKgItem.category + ' · ' + biggestKgItem.subcategory + ' (' + biggestKgItem.kgTotal.toLocaleString() + ' kg' + (biggestKgItem.pct!==null ? ', ' + biggestKgItem.pct + '%' : '') + ' del total cortado).');
+
+  let points = [];
+  if(!compared.length){
+    sentences.push('Este período se está analizando de forma individual. Agrega un período de comparación en "Cargar datos" si quieres ver la tendencia frente a otro mes.');
+    points = [...categories].slice(0,6).map(c => c.category + ' · ' + c.subcategory + (c.pct!==null ? ' representa ' + c.pct + '% del total cortado.' : ' — ' + c.kgTotal.toLocaleString() + ' kg.'));
+  } else {
+    const okComps = compared.filter(c => c.status === 'ok');
+    const failedComps = compared.filter(c => c.status === 'missing-totals');
+    if(okComps.length){
+      // Chronological order (oldest -> newest) is what determines whether the trend is rising or falling —
+      // NOT the order periods were added in. The main period may be the most recent one, or not.
+      const chronoAll = chronoOrderedPeriods();
+      const seriesData = chronoAll.map(({p}) => {
+        const t = aggregateCategoryTotals(rawRows, p.weeks, p.totalCut);
+        return { label: periodDisplayLabel(p), pct: t.overallPct };
+      });
+      const seriesTxt = seriesData.map(s => s.label + ' ' + (s.pct===null?'N/D':s.pct+'%')).join(', ');
+      let trendTxt = 'con variación entre períodos';
+      let trendIsUp = null;
+      if(seriesData.every(s => s.pct !== null) && seriesData.length >= 2){
+        const vals = seriesData.map(s => s.pct);
+        const increasing = vals.every((v,i) => i===0 || v >= vals[i-1]);
+        const decreasing = vals.every((v,i) => i===0 || v <= vals[i-1]);
+        if(increasing && !decreasing){ trendTxt = 'mostrando una tendencia al alza a lo largo del tiempo'; trendIsUp = true; }
+        else if(decreasing && !increasing){ trendTxt = 'mostrando una tendencia a la baja a lo largo del tiempo'; trendIsUp = false; }
+      }
+      sentences.push('En orden cronológico, el % total por período fue: ' + seriesTxt + ', ' + trendTxt + '.');
+      if(trendIsUp === true) sentences.push('Conviene revisar de cerca qué subcategorías explican ese incremento antes de que se convierta en una tendencia sostenida.');
+      else if(trendIsUp === false) sentences.push('La comparación entre períodos es favorable; vale la pena mantener las prácticas actuales y revisar puntualmente las subcategorías que subieron.');
+
+      // Embed the most notable single comparison directly in the narrative, in the exact style requested
+      const allItems = [];
+      okComps.forEach(cmp => cmp.items.forEach(it => allItems.push({ ...it, periodLabel: cmp.label })));
+      const topMover = [...allItems].filter(it => it.deltaPts !== null).sort((a,b) => Math.abs(b.deltaPts) - Math.abs(a.deltaPts))[0];
+      if(topMover) sentences.push(comparisonSentence(topMover, topMover.periodLabel, 0));
+
+      okComps.forEach((cmp, cmpIdx) => {
+        const worsened = cmp.items.filter(i => i.direction === 'subió').sort((a,b) => b.deltaPts - a.deltaPts).slice(0,2);
+        const improved = cmp.items.filter(i => i.direction === 'bajó').sort((a,b) => a.deltaPts - b.deltaPts).slice(0,1);
+        [...worsened, ...improved].forEach((it, idx) => {
+          points.push(comparisonSentence(it, cmp.label, cmpIdx + idx));
+        });
+      });
+    }
+    if(failedComps.length){
+      sentences.push('Falta el kg cortado de ' + failedComps.map(c => c.label).join(', ') + ' para incluirlo(s) en la comparación de %.');
+    }
+    if(!points.length) points = ['Las subcategorías se mantuvieron estables frente a los períodos comparados.'];
+  }
+
+  const crit = computeCriticalDays(main);
+  const criticalDaysText = buildCriticalDaysNarrative(label, crit);
+
+  return { conclusion: sentences.join(' '), points: points.slice(0,6), criticalDaysText };
+}
+
+async function generateReport(){
+  if(!rawRows.length){ setStatus('Primero importa y conecta tu Excel en "Cargar datos".', 'error'); return; }
+  const main = periods[0];
+  if(!main.weeks.size){ setStatus('Selecciona al menos una semana para el período principal en "Cargar datos".', 'error'); return; }
+
+  generateBtn.disabled = true;
+  downloadJpgBtn.disabled = true;
+  previewCard.classList.add('hidden');
+  editCard.classList.add('hidden');
+  statusEl.innerHTML = '<span class="spinner"></span> Generando conclusiones...';
+
+  const categories = aggregateCategories(rawRows, main.weeks, main.totalCut);
+  const totals = aggregateCategoryTotals(rawRows, main.weeks, main.totalCut);
+  const compared = compareAllPeriods();
+  const label = periodDisplayLabel(main);
+
+  const categoryMix = ['CORTE','MERMA','PLANTA'].map(cat => {
+    const kg = categories.filter(c => c.category === cat).reduce((s,c) => s + c.kgTotal, 0);
+    const share = totals.totalScrapAll ? Math.round((kg/totals.totalScrapAll)*100) : 0;
+    return { category: cat, shareOfScrap: share + '%' };
+  });
+
+  const chronoSeries = chronoOrderedPeriods().map(({p}) => {
+    const t = aggregateCategoryTotals(rawRows, p.weeks, p.totalCut);
+    return { label: periodDisplayLabel(p), pct: t.overallPct };
+  });
+
+  const userPrompt = 'Período principal: ' + label +
+    '\\n\\nmainOverallPct: ' + (totals.overallPct === null ? 'no calculable' : totals.overallPct + '%') + ' (' + totals.totalScrapAll + ' kg de scrap total)' +
+    '\\n\\ncategoryMix: ' + JSON.stringify(categoryMix) +
+    '\\n\\ncomparisons: ' + JSON.stringify(compared) +
+    '\\n\\nchronoSeries (orden cronológico real, de más antiguo a más reciente): ' + JSON.stringify(chronoSeries) +
+    '\\n\\nGenera la conclusión elaborada y los puntos a destacar siguiendo el formato indicado.';
+
+  let usedAI = false, conclusion = '', points = [];
+  try{
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1100, system: SYSTEM_PROMPT, messages: [{ role: "user", content: userPrompt }] })
+    });
+    const data = await response.json();
+    const textBlock = (data.content || []).find(b => b.type === 'text');
+    if(!textBlock) throw new Error('Respuesta vacía');
+    let clean = textBlock.text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    const parsed = JSON.parse(clean);
+    if(!parsed.conclusion) throw new Error('Formato incompleto');
+    conclusion = parsed.conclusion; points = parsed.points || [];
+    usedAI = true;
+  }catch(err){
+    console.warn('IA no disponible, generando localmente:', err);
+    const local = buildLocalConclusions();
+    conclusion = local.conclusion; points = local.points;
+  }
+
+  currentReport = { month: label, conclusion, points, customNotes: '', criticalDaysText: buildCriticalDaysNarrative(label, computeCriticalDays(main)) };
+  renderPreview(currentReport);
+  populateEditFields(currentReport);
+  downloadJpgBtn.disabled = false;
+  setStatus(usedAI ? 'Conclusiones generadas con IA. Puedes editarlas antes de descargar.' : 'Conclusiones generadas (motor local). Puedes editarlas antes de descargar.', 'ok');
+  generateBtn.disabled = false;
+}
+
+function populateEditFields(r){
+  editConclusion.value = r.conclusion || '';
+  editPoints.value = (r.points || []).join('\n');
+  editNotes.value = r.customNotes || '';
+  editCard.classList.remove('hidden');
+}
+
+function syncEditsToReport(){
+  if(!currentReport) return;
+  currentReport.conclusion = editConclusion.value;
+  currentReport.points = editPoints.value.split('\n').map(s => s.trim()).filter(Boolean);
+  currentReport.customNotes = editNotes.value.trim();
+  renderPreview(currentReport);
+}
+[editConclusion, editPoints, editNotes].forEach(el => el.addEventListener('input', syncEditsToReport));
+
+function criticalDaysHtml(sentences){
+  if(!sentences || !sentences.length) return '';
+  const lis = sentences.map(s => '<li>' + s + '</li>').join('');
+  return '<p style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin:14px 0 4px;">Días críticos del período</p>' +
+    '<ul class="report-list">' + lis + '</ul>';
+}
+
+function renderPreview(r){
+  previewCard.classList.remove('hidden');
+  const pointsLis = (r.points || []).map(p => '<li>' + p + '</li>').join('');
+  previewContent.innerHTML =
+    '<div class="note" style="background:#F2F7F3;border-color:var(--green);font-weight:600;">' + (r.conclusion || '') + '</div>' +
+    '<ul class="report-list" style="margin-top:10px;">' + (pointsLis || '<li>—</li>') + '</ul>' +
+    criticalDaysHtml(r.criticalDaysText) +
+    (r.customNotes ? '<div class="note" style="margin-top:8px;">📝 ' + r.customNotes + '</div>' : '');
+}
+
+/* ===================== IMAGE EXPORT ===================== */
+function buildExportHtml(r){
+  const main = periods[0];
+  const chart = computeTrendChart();
+  const totals = aggregateCategoryTotals(rawRows, main.weeks, main.totalCut);
+  const kpis = [
+    { label: 'Scrap total', value: totals.overallPct === null ? 'N/D' : totals.overallPct + '%' },
+    ...['CORTE','MERMA','PLANTA'].map(cat => ({ label: cat, value: totals.pct[cat] === null ? 'N/D' : totals.pct[cat].toFixed(1) + '%' }))
+  ];
+  const kpiHtml = kpis.map(k =>
+    '<div style="flex:1;min-width:140px;background:#E8F5E9;border-radius:14px;padding:16px;text-align:center;">' +
+      '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:28px;font-weight:700;color:#3F7A56;">' + k.value + '</div>' +
+      '<div style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#23281F;margin-top:4px;">' + k.label + '</div></div>'
+  ).join('');
+  const chartSvg = chart.data.length ? lineChartSvg(chart.labels, chart.data, chart.color, chart.unit, chart.legend) : '';
+  const pointsLis = (r.points||[]).map(p => '<li style="margin-bottom:6px;">' + p + '</li>').join('');
+
+  return '' +
+  '<div style="width:1200px;background:#EDF1EC;font-family:Inter,sans-serif;color:#23281F;padding:48px;box-sizing:border-box;">' +
+    '<div style="display:flex;align-items:center;gap:8px;color:#6B7A6E;font-size:12px;text-transform:uppercase;letter-spacing:.12em;">Planta &middot; Control de Scrap</div>' +
+    '<h1 style="font-size:30px;font-weight:700;margin:8px 0 20px;">Informe de scrap — ' + r.month + '</h1>' +
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:26px;">' + kpiHtml + '</div>' +
+    (chartSvg ? '<h2 style="font-size:16px;font-weight:700;color:#3F7A56;margin:0 0 10px;">' + chart.title + '</h2><div style="background:#fff;border:1px solid #DCE3D9;border-radius:14px;padding:16px;margin-bottom:26px;">' + chartSvg + '</div>' : '') +
+    '<h2 style="font-size:16px;font-weight:700;color:#B8860B;margin:0 0 10px;">Conclusión</h2>' +
+    '<div style="background:#F2F7F3;border:1px solid #3F7A56;border-radius:12px;padding:16px 18px;font-size:13.5px;font-weight:600;line-height:1.5;margin-bottom:22px;">' + (r.conclusion || '') + '</div>' +
+    '<h3 style="font-size:14px;font-weight:700;color:#23281F;margin:0 0 8px;">Puntos a destacar</h3>' +
+    '<ul style="font-size:13px;padding-left:18px;margin:0 0 22px;">' + (pointsLis || '<li>—</li>') + '</ul>' +
+    (r.criticalDaysText && r.criticalDaysText.length ? '<h3 style="font-size:14px;font-weight:700;color:#23281F;margin:0 0 8px;">Días críticos del período</h3><ul style="font-size:13px;padding-left:18px;margin:0 0 22px;">' + r.criticalDaysText.map(s => '<li style="margin-bottom:6px;">'+s+'</li>').join('') + '</ul>' : '') +
+    (r.customNotes ? '<h3 style="font-size:14px;font-weight:700;color:#23281F;margin:0 0 8px;">Notas</h3><div style="background:#fff;border:1px solid #DCE3D9;border-radius:12px;padding:14px 18px;font-size:13px;white-space:pre-wrap;">' + r.customNotes + '</div>' : '') +
+    '<p style="font-size:11px;color:#6B7A6E;margin-top:28px;">Generado ' + new Date().toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' }) + '</p>' +
+  '</div>';
+}
+
+function loadScript(src){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+async function ensureH2C(){
+  if(typeof html2canvas !== 'undefined') return true;
+  setStatus('Cargando librería de exportación de imagen...', '');
+  try{ await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'); if(typeof html2canvas !== 'undefined') return true; }catch(e){}
+  try{ await loadScript('https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js'); if(typeof html2canvas !== 'undefined') return true; }catch(e){}
+  return typeof html2canvas !== 'undefined';
+}
+
+async function downloadImage(){
+  if(!currentReport) return;
+  syncEditsToReport();
+  const liveReport = { ...currentReport, conclusion: editConclusion.value, points: editPoints.value.split('\n').map(s=>s.trim()).filter(Boolean), customNotes: editNotes.value.trim() };
+  downloadJpgBtn.disabled = true;
+  const ok = await ensureH2C();
+  if(!ok){
+    setStatus('No se pudo cargar la librería de exportación de imagen. Revisa tu conexión e intenta de nuevo.', 'error');
+    downloadJpgBtn.disabled = false;
+    return;
+  }
+  const holder = document.createElement('div');
+  holder.style.position = 'fixed'; holder.style.left = '-99999px'; holder.style.top = '0';
+  holder.innerHTML = buildExportHtml(liveReport);
+  document.body.appendChild(holder);
+  try{
+    setStatus('Generando imagen...', '');
+    const target = holder.firstElementChild;
+    const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#EDF1EC', useCORS: true, width: 1200 });
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'Informe_Scrap_' + liveReport.month.replace(/[^a-zA-Z0-9]/g,'_') + '.jpg';
+    document.body.appendChild(a); a.click(); a.remove();
+    setStatus('Descarga iniciada.', 'ok');
+  }catch(e){
+    console.error(e);
+    setStatus('No se pudo generar la imagen. Revisa la consola para más detalle.', 'error');
+  }finally{
+    document.body.removeChild(holder);
+    downloadJpgBtn.disabled = false;
+  }
+}
+
+generateBtn.addEventListener('click', generateReport);
+downloadJpgBtn.addEventListener('click', downloadImage);
+</script>
+</body>
+</html>
