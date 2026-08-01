@@ -1,0 +1,45 @@
+name: Sincronizar datos de scrap desde SharePoint
+
+on:
+  schedule:
+    # Se ejecuta cada hora, en el minuto 0. Ajusta la frecuencia aquí si quieres.
+    # Ejemplos: '*/30 * * * *' = cada 30 min · '0 6,12,18 * * *' = 3 veces al día
+    - cron: '0 * * * *'
+  workflow_dispatch: {}   # permite ejecutarlo manualmente desde la pestaña "Actions" en GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install requests openpyxl
+
+      - name: Descargar y convertir el archivo de SharePoint
+        env:
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}
+          SP_SITE_HOSTNAME: ${{ secrets.SP_SITE_HOSTNAME }}
+          SP_SITE_PATH: ${{ secrets.SP_SITE_PATH }}
+          SP_FILE_PATH: ${{ secrets.SP_FILE_PATH }}
+          SP_SHEET_NAME: ${{ secrets.SP_SHEET_NAME }}
+        run: python .github/scripts/sync_sharepoint.py
+
+      - name: Commitear datos actualizados (solo si cambiaron)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/scrap-data.json
+          git diff --quiet --cached || git commit -m "Actualiza datos de scrap desde SharePoint [automático]"
+          git push
