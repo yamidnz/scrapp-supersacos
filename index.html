@@ -85,6 +85,8 @@
     <button data-tab="dashboard">Dashboard</button>
   </div>
 
+  <div id="autoSyncBanner" class="hidden" style="background:#F2F7F3;border:1px solid var(--green);color:var(--green);border-radius:10px;padding:10px 14px;font-size:12.5px;margin-bottom:16px;"></div>
+
   <!-- ===== TAB: CARGAR DATOS ===== -->
   <div id="tabCargar">
     <div class="card">
@@ -184,6 +186,11 @@
           <div id="chartMonthChips" class="chip-row"></div>
           <button id="chartCustomResetBtn" class="btn btn-steel" style="margin-top:8px;padding:6px 12px;font-size:12px;">Usar selección automática</button>
         </details>
+        <details class="adv" id="chartDailyDetails">
+          <summary>Ver detalle día a día de una o varias semanas (independiente de la comparación)</summary>
+          <div id="chartDailyWeekChips" class="chip-row"></div>
+          <button id="chartDailyResetBtn" class="btn btn-steel" style="margin-top:8px;padding:6px 12px;font-size:12px;">Usar selección automática</button>
+        </details>
         <div id="trendChartBox"></div>
         <div id="trendChartNote" class="status"></div>
       </div>
@@ -204,6 +211,28 @@
       <div class="card">
         <label>Scrap por subcategoría</label>
         <div id="compareTableBox"></div>
+      </div>
+
+      <div class="card">
+        <details class="adv">
+          <summary>Configuración de IA (ChatGPT / OpenAI) — opcional</summary>
+          <p style="font-size:12px;color:var(--muted);margin:6px 0 10px;">Tu clave se guarda solo en este navegador (nunca se sube a GitHub ni a ningún servidor). Sin clave, las conclusiones se generan igual con el motor local.</p>
+          <div class="row">
+            <div>
+              <label>Tu OpenAI API Key</label>
+              <input type="password" id="openaiKeyInput" placeholder="sk-..." autocomplete="off" />
+            </div>
+            <div>
+              <label>Modelo</label>
+              <input type="text" id="openaiModelInput" placeholder="gpt-5.6-luna" />
+            </div>
+          </div>
+          <div class="btn-row">
+            <button id="openaiSaveBtn" class="btn btn-steel" style="padding:8px 14px;font-size:12.5px;">Guardar</button>
+            <button id="openaiClearBtn" class="btn" style="padding:8px 14px;font-size:12.5px;background:var(--track);color:var(--muted);">Borrar clave guardada</button>
+          </div>
+          <div id="openaiStatus" class="status"></div>
+        </details>
       </div>
 
       <div class="card">
@@ -247,6 +276,7 @@ tabbar.querySelectorAll('button').forEach(btn => {
 /* ===================== DOM refs ===================== */
 const fileInput = document.getElementById('fileInput');
 const importBtn = document.getElementById('importBtn');
+const autoSyncBanner = document.getElementById('autoSyncBanner');
 const importStatus = document.getElementById('importStatus');
 const mappingEl = document.getElementById('mapping');
 const mapCard = document.getElementById('mapCard');
@@ -275,12 +305,19 @@ const chartPeriodToggles = document.getElementById('chartPeriodToggles');
 const chartModeToggle = document.getElementById('chartModeToggle');
 const chartMonthChips = document.getElementById('chartMonthChips');
 const chartCustomResetBtn = document.getElementById('chartCustomResetBtn');
+const chartDailyWeekChips = document.getElementById('chartDailyWeekChips');
+const chartDailyResetBtn = document.getElementById('chartDailyResetBtn');
 const trendChartBox = document.getElementById('trendChartBox');
 const trendChartNote = document.getElementById('trendChartNote');
 const dayDetailQuick = document.getElementById('dayDetailQuick');
 const dayDetailSelect = document.getElementById('dayDetailSelect');
 const dayDetailBox = document.getElementById('dayDetailBox');
 const compareTableBox = document.getElementById('compareTableBox');
+const openaiKeyInput = document.getElementById('openaiKeyInput');
+const openaiModelInput = document.getElementById('openaiModelInput');
+const openaiSaveBtn = document.getElementById('openaiSaveBtn');
+const openaiClearBtn = document.getElementById('openaiClearBtn');
+const openaiStatus = document.getElementById('openaiStatus');
 const generateBtn = document.getElementById('generateBtn');
 const statusEl = document.getElementById('status');
 const previewCard = document.getElementById('previewCard');
@@ -318,6 +355,7 @@ let periods = [ { id:'p0', label:'Principal', weeks:new Set(), totalCut:0, title
 let activePeriodId = 'p0';
 let chartVisiblePeriodIds = new Set(['p0']); // which periods show up in the trend chart — independent of comparison setup
 let chartCustomMonths = null; // Set of month keys chosen purely for chart display, independent of periods/comparison
+let chartCustomWeeks = null; // Set of week ids chosen for a DAY-BY-DAY view, independent of periods/comparison — takes top priority over everything else
 let trendChartMode = 'global'; // 'global' (one point per period, % total) | 'weekly' (kg/día detail across all visible periods)
 let periodSeq = 1;
 
@@ -452,7 +490,7 @@ confirmMapBtn.addEventListener('click', () => {
     mapStatus.className = 'status error';
     return;
   }
-  rawRows = parsedJson.map(r => {
+  const mapped = parsedJson.map(r => {
     let fechaVal = map.fecha ? r[map.fecha] : '';
     if(fechaVal instanceof Date) fechaVal = fechaVal.toISOString().slice(0,10);
     return {
@@ -464,12 +502,20 @@ confirmMapBtn.addEventListener('click', () => {
     };
   }).filter(r => r.semana && r.categoria);
 
-  if(!rawRows.length){
+  if(!mapped.length){
     mapStatus.textContent = 'No se encontraron filas con datos válidos con ese mapeo. Revisa las columnas elegidas.';
     mapStatus.className = 'status error';
     return;
   }
+  mapStatus.textContent = '';
+  finalizeLoadedRows(mapped, '<b>' + mapped.length + '</b> filas conectadas de <b>' + currentFileName + '</b> (hoja: ' + currentSheetName + ')');
+});
 
+// Shared finalization step: takes an array of {semana, categoria, subcategoria, fecha, peso}
+// and sets up weeks/months/periods/dashboard. Used by both the manual column-mapping flow
+// and the automatic SharePoint-sync flow (which already delivers rows in this exact shape).
+function finalizeLoadedRows(rows, summaryHtml){
+  rawRows = rows;
   weekOrder = [...new Set(rawRows.map(r => r.semana))];
   daysByWeek = {};
   weekOrder.forEach(w => { daysByWeek[w] = new Set(rawRows.filter(r => r.semana === w && r.fecha).map(r => r.fecha)); });
@@ -479,17 +525,18 @@ confirmMapBtn.addEventListener('click', () => {
   activePeriodId = 'p0'; periodSeq = 1;
   chartVisiblePeriodIds = new Set(['p0']);
   chartCustomMonths = null;
+  chartCustomWeeks = null;
 
   mappingEl.classList.remove('hidden');
-  mappingEl.innerHTML = '<b>' + rawRows.length + '</b> filas conectadas de <b>' + currentFileName + '</b> (hoja: ' + currentSheetName + ')<br/>' +
+  mappingEl.innerHTML = summaryHtml + '<br/>' +
     'Semanas: <b>' + weekOrder.join(', ') + '</b>' + (monthOrder.length ? ' &middot; Meses: <b>' + monthOrder.map(m => monthLabels[m]).join(', ') + '</b>' : '');
-  mapStatus.textContent = '';
 
   renderPeriodTargetRow();
   syncActivePeriodInputs();
   renderWeekPresets();
   renderMonthChips();
   renderChartMonthChips();
+  renderChartDailyWeekChips();
   renderDayDetailDateOptions();
   dayDetailBox.innerHTML = '<p style="font-size:13px;color:var(--muted);">Elige una fecha arriba (o un día destacado) para ver su detalle por categoría y subcategoría.</p>';
   renderWeekRangeSelectors();
@@ -501,7 +548,77 @@ confirmMapBtn.addEventListener('click', () => {
   dashEmpty.classList.add('hidden');
   dashContent.classList.remove('hidden');
   renderDashboard();
+}
+
+/* ===================== AUTO-SYNC FROM SHAREPOINT (via GitHub Actions snapshot) ===================== */
+async function tryAutoSync(){
+  try{
+    const res = await fetch('./data/scrap-data.json', { cache: 'no-store' });
+    if(!res.ok) return false;
+    const payload = await res.json();
+    const rows = Array.isArray(payload) ? payload : payload.rows;
+    if(!rows || !rows.length) return false;
+    const normalized = rows.map(r => ({
+      semana: String(r.semana || '').trim(),
+      categoria: String(r.categoria || '').toUpperCase().trim(),
+      subcategoria: String(r.subcategoria || '').toUpperCase().trim(),
+      fecha: String(r.fecha || '').trim(),
+      peso: Number(r.peso) || 0
+    })).filter(r => r.semana && r.categoria);
+    if(!normalized.length) return false;
+    currentFileName = 'SharePoint (sincronización automática)';
+    const updatedAt = payload.generated_at ? new Date(payload.generated_at).toLocaleString('es-CO') : null;
+    autoSyncBanner.classList.remove('hidden');
+    autoSyncBanner.innerHTML = '🔄 Datos sincronizados automáticamente desde SharePoint' + (updatedAt ? ' — actualizado: ' + updatedAt : '') + '. <a href="#" id="autoSyncSwitchManual" style="color:inherit;text-decoration:underline;">Cargar otro archivo manualmente</a>';
+    document.getElementById('autoSyncSwitchManual').addEventListener('click', (e) => { e.preventDefault(); tabbar.querySelector('[data-tab="cargar"]').click(); });
+    finalizeLoadedRows(normalized, '<b>' + normalized.length + '</b> filas sincronizadas automáticamente desde SharePoint');
+    tabbar.querySelector('[data-tab="dashboard"]').click();
+    return true;
+  }catch(e){
+    console.warn('Auto-sync no disponible, se usa carga manual:', e);
+    return false;
+  }
+}
+tryAutoSync();
+
+/* ===================== OPENAI SETTINGS (stored locally in the browser only) ===================== */
+const OPENAI_KEY_STORAGE = 'scrapDashboard_openaiKey';
+const OPENAI_MODEL_STORAGE = 'scrapDashboard_openaiModel';
+const OPENAI_DEFAULT_MODEL = 'gpt-5.6-luna';
+
+function loadOpenAiSettings(){
+  try{
+    const savedKey = localStorage.getItem(OPENAI_KEY_STORAGE);
+    const savedModel = localStorage.getItem(OPENAI_MODEL_STORAGE);
+    if(savedKey) openaiKeyInput.value = savedKey;
+    openaiModelInput.value = savedModel || OPENAI_DEFAULT_MODEL;
+    if(savedKey) openaiStatus.textContent = 'Clave guardada en este navegador. Modelo: ' + (savedModel || OPENAI_DEFAULT_MODEL);
+  }catch(e){ console.warn('No se pudo leer la configuración guardada', e); }
+}
+loadOpenAiSettings();
+
+openaiSaveBtn.addEventListener('click', () => {
+  const key = openaiKeyInput.value.trim();
+  const model = openaiModelInput.value.trim() || OPENAI_DEFAULT_MODEL;
+  try{
+    if(key) localStorage.setItem(OPENAI_KEY_STORAGE, key);
+    localStorage.setItem(OPENAI_MODEL_STORAGE, model);
+    openaiStatus.textContent = key ? 'Clave y modelo guardados en este navegador.' : 'Modelo guardado (sin clave — se usará el motor local).';
+    openaiStatus.className = 'status ok';
+  }catch(e){
+    openaiStatus.textContent = 'No se pudo guardar (el navegador bloqueó el almacenamiento local).';
+    openaiStatus.className = 'status error';
+  }
 });
+openaiClearBtn.addEventListener('click', () => {
+  try{ localStorage.removeItem(OPENAI_KEY_STORAGE); }catch(e){}
+  openaiKeyInput.value = '';
+  openaiStatus.textContent = 'Clave borrada de este navegador.';
+  openaiStatus.className = 'status';
+});
+
+
+
 
 /* ===================== MULTI-PERIOD MANAGEMENT ===================== */
 function getPeriod(id){ return periods.find(p => p.id === id); }
@@ -820,7 +937,9 @@ function renderChartMonthChips(){
       if(!chartCustomMonths) chartCustomMonths = new Set();
       if(chartCustomMonths.has(mk)) chartCustomMonths.delete(mk); else chartCustomMonths.add(mk);
       if(!chartCustomMonths.size) chartCustomMonths = null;
+      chartCustomWeeks = null; // mutually exclusive with the daily-detail picker
       renderChartMonthChips();
+      renderChartDailyWeekChips();
       renderChartModeToggle();
       renderTrendChartOnly();
     });
@@ -830,6 +949,42 @@ function renderChartMonthChips(){
 chartCustomResetBtn.addEventListener('click', () => {
   chartCustomMonths = null;
   renderChartMonthChips();
+  renderChartModeToggle();
+  renderTrendChartOnly();
+});
+
+function renderChartDailyWeekChips(){
+  chartDailyWeekChips.innerHTML = '';
+  if(!weekOrder.length) return;
+  const hasDates = rawRows.some(r => r.fecha);
+  if(!hasDates){
+    chartDailyWeekChips.innerHTML = '<span style="font-size:12px;color:var(--muted);">No hay columna de fecha mapeada, así que no se puede mostrar el detalle día a día.</span>';
+    return;
+  }
+  weekOrder.forEach((w,i) => {
+    const on = chartCustomWeeks && chartCustomWeeks.has(w);
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = 'S' + w;
+    const color = CHART_MONTH_PALETTE[i % CHART_MONTH_PALETTE.length];
+    btn.style.background = on ? color : '#E3E8DF';
+    btn.style.color = on ? '#fff' : '#6B7A6E';
+    btn.addEventListener('click', () => {
+      if(!chartCustomWeeks) chartCustomWeeks = new Set();
+      if(chartCustomWeeks.has(w)) chartCustomWeeks.delete(w); else chartCustomWeeks.add(w);
+      if(!chartCustomWeeks.size) chartCustomWeeks = null;
+      chartCustomMonths = null; // mutually exclusive with the month picker
+      renderChartDailyWeekChips();
+      renderChartMonthChips();
+      renderChartModeToggle();
+      renderTrendChartOnly();
+    });
+    chartDailyWeekChips.appendChild(btn);
+  });
+}
+chartDailyResetBtn.addEventListener('click', () => {
+  chartCustomWeeks = null;
+  renderChartDailyWeekChips();
   renderChartModeToggle();
   renderTrendChartOnly();
 });
@@ -861,7 +1016,7 @@ function renderChartPeriodToggles(){
 
 function renderChartModeToggle(){
   const visibleCount = periods.filter(p => chartVisiblePeriodIds.has(p.id)).length || 1;
-  if(periods.length <= 1 || visibleCount <= 1 || (chartCustomMonths && chartCustomMonths.size)){
+  if(periods.length <= 1 || visibleCount <= 1 || (chartCustomMonths && chartCustomMonths.size) || (chartCustomWeeks && chartCustomWeeks.size)){
     chartModeToggle.classList.add('hidden'); chartModeToggle.innerHTML = ''; return;
   }
   chartModeToggle.classList.remove('hidden');
@@ -886,6 +1041,28 @@ const CHART_MONTH_PALETTE = ['#3F7A56','#C98A2C','#6B5B95','#B84A3E','#2E86AB','
 function monthColor(mk){ const idx = monthOrder.indexOf(mk); return CHART_MONTH_PALETTE[idx % CHART_MONTH_PALETTE.length] || '#3F7A56'; }
 
 function computeTrendChart(){
+  if(chartCustomWeeks && chartCustomWeeks.size){
+    const weeksSorted = [...chartCustomWeeks].sort((a,b) => weekOrder.indexOf(a)-weekOrder.indexOf(b));
+    const rows = rawRows.filter(r => chartCustomWeeks.has(r.semana) && r.fecha);
+    const weeksLabel = weeksSorted.map(w => 'S'+w).join(', ');
+    if(!rows.length){
+      return { title: 'Detalle diario (' + weeksLabel + ')', labels: [], data: [], unit: ' kg', color: '#3F7A56', legend: null, note: 'No hay columna de fecha mapeada para estas semanas, así que no se puede mostrar el detalle diario.' };
+    }
+    const byDate = {};
+    rows.forEach(r => { byDate[r.fecha] = (byDate[r.fecha] || 0) + r.peso; });
+    const dates = Object.keys(byDate).sort();
+    const dateToWeek = {}; rawRows.forEach(r => { if(r.fecha) dateToWeek[r.fecha] = r.semana; });
+    const weekColor = (w) => CHART_MONTH_PALETTE[weeksSorted.indexOf(w) % CHART_MONTH_PALETTE.length];
+    return {
+      title: 'Detalle diario — Kg de scrap por día (' + weeksLabel + ')',
+      labels: dates.map(d => d.slice(5)),
+      data: dates.map(d => Math.round(byDate[d]*10)/10),
+      unit: ' kg',
+      color: dates.map(d => weekColor(dateToWeek[d])),
+      legend: weeksSorted.length > 1 ? weeksSorted.map(w => ({ label: 'S'+w, color: weekColor(w) })) : null,
+      note: 'Selección independiente de la comparación de períodos.'
+    };
+  }
   if(chartCustomMonths && chartCustomMonths.size){
     const customWeeks = weekOrder.filter(w => chartCustomMonths.has(weekToMonth[w]));
     const weeks = aggregateWeeks(rawRows, new Set(customWeeks));
@@ -1141,7 +1318,8 @@ Reglas:
 - Escribe una conclusión de 4 a 6 frases, con AL MENOS una frase de comparación directa entre subcategorías y período en este estilo exacto: "El scrap de [SUBCATEGORÍA] tuvo un aumento de [X] puntos porcentuales por encima de [período]" (o "por debajo de" si bajó). Cubre: (1) % total del principal y qué tan sano es, (2) reparto CORTE/MERMA/PLANTA usando categoryMix, (3) subcategoría de mayor peso, (4) si hay comparaciones, el % de cada período en orden cronológico (usa chronoSeries) y si la tendencia real (de más antiguo a más reciente) sube, baja o fluctúa — con al menos una comparación de subcategoría específica en el estilo pedido, (5) cierre con recomendación breve.
 - VARÍA la redacción de las comparaciones entre "tuvo un aumento de X puntos por encima de", "subió X puntos frente a, pasando de Y% a Z%", "se observa un incremento de X puntos en...", y sus equivalentes en negativo ("bajó", "se redujo", "disminución de X puntos") — no repitas la misma estructura de frase dos veces seguidas.
 - Genera una lista de "puntos a destacar" de 4 a 6, con los cambios más notorios de cada período comparado (o de las subcategorías de mayor peso si no hay comparaciones), usando la misma variedad de redacción.
-- NO generes información sobre días específicos ni fechas — esa parte del informe se calcula por separado con datos reales.
+- Recibirás "isWeeklyReport" (true si el período principal es 1 o 2 semanas) y, si aplica, "dailyPattern" con el día real de mayor scrap dentro del período principal (fecha, total, % sobre el promedio diario, categoría y subcategoría principal — datos ya calculados, no inventes otros días ni cifras). Si "isWeeklyReport" es true y "dailyPattern" existe, incluye ese dato como una de las primeras frases de la conclusión (es el informe semanal del usuario, el patrón diario es el dato más relevante). Si "dailyPattern" es null, no menciones días específicos.
+- No inventes fechas ni cifras de días que no vengan en "dailyPattern" — el detalle completo de días críticos se calcula por separado con datos reales.
 Responde ÚNICAMENTE con JSON válido, sin texto adicional ni backticks:
 {"conclusion":"","points":["punto 1","punto 2"]}`;
 
@@ -1314,9 +1492,18 @@ function buildLocalConclusions(){
 
   if(biggestKgItem) sentences.push('La subcategoría con mayor peso es ' + biggestKgItem.category + ' · ' + biggestKgItem.subcategory + ' (' + biggestKgItem.kgTotal.toLocaleString() + ' kg' + (biggestKgItem.pct!==null ? ', ' + biggestKgItem.pct + '%' : '') + ' del total cortado).');
 
+  const isWeeklyReport = main.weeks.size <= 2;
+  const critForNarrative = computeCriticalDays(main);
+  if(isWeeklyReport && critForNarrative && critForNarrative.days.length){
+    const top = critForNarrative.days[0];
+    sentences.push('Dentro de ' + label + ', el día con más scrap fue el ' + top.fecha + ' (' + top.total + ' kg, ' + (top.overAvgPct>0?'+':'') + top.overAvgPct + '% sobre el promedio diario de ' + critForNarrative.avg + ' kg), principalmente por ' + top.topCategory + ' · ' + top.topSubcategory + ' (' + top.topKg + ' kg, ' + top.topSharePct + '% de ese día).');
+  }
+
   let points = [];
   if(!compared.length){
-    sentences.push('Este período se está analizando de forma individual. Agrega un período de comparación en "Cargar datos" si quieres ver la tendencia frente a otro mes.');
+    sentences.push(isWeeklyReport
+      ? ('Este es el informe de ' + label + ', enfocado en el desempeño de esa semana en particular.')
+      : 'Este período se está analizando de forma individual. Agrega un período de comparación en "Cargar datos" si quieres ver la tendencia frente a otro mes.');
     points = [...categories].slice(0,6).map(c => c.category + ' · ' + c.subcategory + (c.pct!==null ? ' representa ' + c.pct + '% del total cortado.' : ' — ' + c.kgTotal.toLocaleString() + ' kg.'));
   } else {
     const okComps = compared.filter(c => c.status === 'ok');
@@ -1396,39 +1583,80 @@ async function generateReport(){
     return { label: periodDisplayLabel(p), pct: t.overallPct };
   });
 
+  const isWeeklyReport = main.weeks.size <= 2;
+  const critForAI = computeCriticalDays(main);
+  const dailyPattern = (isWeeklyReport && critForAI && critForAI.days.length) ? {
+    fecha: critForAI.days[0].fecha,
+    total: critForAI.days[0].total,
+    overAvgPct: critForAI.days[0].overAvgPct,
+    avgDaily: critForAI.avg,
+    topCategory: critForAI.days[0].topCategory,
+    topSubcategory: critForAI.days[0].topSubcategory,
+    topKg: critForAI.days[0].topKg,
+    topSharePct: critForAI.days[0].topSharePct
+  } : null;
+
   const userPrompt = 'Período principal: ' + label +
     '\\n\\nmainOverallPct: ' + (totals.overallPct === null ? 'no calculable' : totals.overallPct + '%') + ' (' + totals.totalScrapAll + ' kg de scrap total)' +
     '\\n\\ncategoryMix: ' + JSON.stringify(categoryMix) +
     '\\n\\ncomparisons: ' + JSON.stringify(compared) +
     '\\n\\nchronoSeries (orden cronológico real, de más antiguo a más reciente): ' + JSON.stringify(chronoSeries) +
+    '\\n\\nisWeeklyReport: ' + isWeeklyReport +
+    '\\n\\ndailyPattern: ' + JSON.stringify(dailyPattern) +
     '\\n\\nGenera la conclusión elaborada y los puntos a destacar siguiendo el formato indicado.';
 
   let usedAI = false, conclusion = '', points = [];
-  try{
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1100, system: SYSTEM_PROMPT, messages: [{ role: "user", content: userPrompt }] })
-    });
-    const data = await response.json();
-    const textBlock = (data.content || []).find(b => b.type === 'text');
-    if(!textBlock) throw new Error('Respuesta vacía');
-    let clean = textBlock.text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
-    const parsed = JSON.parse(clean);
-    if(!parsed.conclusion) throw new Error('Formato incompleto');
-    conclusion = parsed.conclusion; points = parsed.points || [];
-    usedAI = true;
-  }catch(err){
-    console.warn('IA no disponible, generando localmente:', err);
+  const openaiKey = (localStorage.getItem(OPENAI_KEY_STORAGE) || '').trim();
+  const openaiModel = (localStorage.getItem(OPENAI_MODEL_STORAGE) || OPENAI_DEFAULT_MODEL).trim();
+
+  let aiErrorMessage = null;
+
+  if(!openaiKey){
     const local = buildLocalConclusions();
     conclusion = local.conclusion; points = local.points;
+  } else {
+    try{
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + openaiKey
+        },
+        body: JSON.stringify({
+          model: openaiModel,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userPrompt }
+          ],
+          response_format: { type: "json_object" }
+        })
+      });
+      const data = await response.json();
+      if(data.error) throw new Error(data.error.message || 'Error de OpenAI');
+      const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if(!text) throw new Error('Respuesta vacía');
+      let clean = text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+      const parsed = JSON.parse(clean);
+      if(!parsed.conclusion) throw new Error('Formato incompleto');
+      conclusion = parsed.conclusion; points = parsed.points || [];
+      usedAI = true;
+    }catch(err){
+      console.warn('ChatGPT no disponible, generando localmente:', err);
+      const isCorsLike = err instanceof TypeError || /Failed to fetch|NetworkError|CORS/i.test(err.message || '');
+      aiErrorMessage = isCorsLike
+        ? '⚠ ChatGPT no respondió — el navegador bloqueó la conexión directa a OpenAI (típico de CORS, no es un problema de tu clave). Se usó el motor local.'
+        : '⚠ ChatGPT devolvió un error: ' + err.message + '. Se usó el motor local.';
+      const local = buildLocalConclusions();
+      conclusion = local.conclusion; points = local.points;
+    }
   }
 
-  currentReport = { month: label, conclusion, points, customNotes: '', criticalDaysText: buildCriticalDaysNarrative(label, computeCriticalDays(main)) };
+  currentReport = { month: label, conclusion, points, customNotes: '', usedAI, criticalDaysText: buildCriticalDaysNarrative(label, computeCriticalDays(main)) };
   renderPreview(currentReport);
   populateEditFields(currentReport);
   downloadJpgBtn.disabled = false;
-  setStatus(usedAI ? 'Conclusiones generadas con IA. Puedes editarlas antes de descargar.' : 'Conclusiones generadas (motor local). Puedes editarlas antes de descargar.', 'ok');
+  if(aiErrorMessage) setStatus(aiErrorMessage, 'error');
+  else setStatus(usedAI ? 'Conclusiones generadas con ChatGPT. Puedes editarlas antes de descargar.' : 'Conclusiones generadas (motor local). Puedes editarlas antes de descargar.', 'ok');
   generateBtn.disabled = false;
 }
 
@@ -1458,7 +1686,11 @@ function criticalDaysHtml(sentences){
 function renderPreview(r){
   previewCard.classList.remove('hidden');
   const pointsLis = (r.points || []).map(p => '<li>' + p + '</li>').join('');
+  const badge = r.usedAI
+    ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#3F7A5622;color:#3F7A56;margin-bottom:10px;">🤖 Generado con ChatGPT</span>'
+    : '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#6B7A6E22;color:#6B7A6E;margin-bottom:10px;">⚙️ Generado con el motor local</span>';
   previewContent.innerHTML =
+    badge + '<br/>' +
     '<div class="note" style="background:#F2F7F3;border-color:var(--green);font-weight:600;">' + (r.conclusion || '') + '</div>' +
     '<ul class="report-list" style="margin-top:10px;">' + (pointsLis || '<li>—</li>') + '</ul>' +
     criticalDaysHtml(r.criticalDaysText) +
