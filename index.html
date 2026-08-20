@@ -215,21 +215,29 @@
 
       <div class="card">
         <details class="adv">
-          <summary>Configuración de IA (ChatGPT / OpenAI) — opcional</summary>
-          <p style="font-size:12px;color:var(--muted);margin:6px 0 10px;">Tu clave se guarda solo en este navegador (nunca se sube a GitHub ni a ningún servidor). Sin clave, las conclusiones se generan igual con el motor local.</p>
-          <div class="row">
+          <summary>Configuración de IA — opcional</summary>
+          <p style="font-size:12px;color:var(--muted);margin:6px 0 10px;">Tu clave se guarda solo en este navegador (nunca se sube a GitHub ni a ningún servidor). Sin proveedor elegido, las conclusiones se generan igual con el motor local.</p>
+          <label>Proveedor</label>
+          <select id="aiProviderInput">
+            <option value="">Ninguno (solo motor local)</option>
+            <option value="openai">ChatGPT (OpenAI) — de pago</option>
+            <option value="gemini">Gemini (Google) — gratis, sin tarjeta</option>
+            <option value="groq">Groq (Llama / GPT-OSS) — gratis, sin tarjeta</option>
+          </select>
+          <div class="row" style="margin-top:10px;">
             <div>
-              <label>Tu OpenAI API Key</label>
-              <input type="password" id="openaiKeyInput" placeholder="sk-..." autocomplete="off" />
+              <label id="aiKeyLabel">Tu API Key</label>
+              <input type="password" id="aiKeyInput" placeholder="Pega tu clave aquí" autocomplete="off" />
             </div>
             <div>
               <label>Modelo</label>
-              <input type="text" id="openaiModelInput" placeholder="gpt-5.6-luna" />
+              <input type="text" id="aiModelInput" placeholder="" />
             </div>
           </div>
+          <p id="aiProviderHint" class="status" style="margin-top:4px;"></p>
           <div class="btn-row">
-            <button id="openaiSaveBtn" class="btn btn-steel" style="padding:8px 14px;font-size:12.5px;">Guardar</button>
-            <button id="openaiClearBtn" class="btn" style="padding:8px 14px;font-size:12.5px;background:var(--track);color:var(--muted);">Borrar clave guardada</button>
+            <button id="aiSaveBtn" class="btn btn-steel" style="padding:8px 14px;font-size:12.5px;">Guardar</button>
+            <button id="aiClearBtn" class="btn" style="padding:8px 14px;font-size:12.5px;background:var(--track);color:var(--muted);">Borrar clave guardada</button>
           </div>
           <div id="openaiStatus" class="status"></div>
         </details>
@@ -313,10 +321,13 @@ const dayDetailQuick = document.getElementById('dayDetailQuick');
 const dayDetailSelect = document.getElementById('dayDetailSelect');
 const dayDetailBox = document.getElementById('dayDetailBox');
 const compareTableBox = document.getElementById('compareTableBox');
-const openaiKeyInput = document.getElementById('openaiKeyInput');
-const openaiModelInput = document.getElementById('openaiModelInput');
-const openaiSaveBtn = document.getElementById('openaiSaveBtn');
-const openaiClearBtn = document.getElementById('openaiClearBtn');
+const aiProviderInput = document.getElementById('aiProviderInput');
+const aiKeyInput = document.getElementById('aiKeyInput');
+const aiKeyLabel = document.getElementById('aiKeyLabel');
+const aiModelInput = document.getElementById('aiModelInput');
+const aiProviderHint = document.getElementById('aiProviderHint');
+const aiSaveBtn = document.getElementById('aiSaveBtn');
+const aiClearBtn = document.getElementById('aiClearBtn');
 const openaiStatus = document.getElementById('openaiStatus');
 const generateBtn = document.getElementById('generateBtn');
 const statusEl = document.getElementById('status');
@@ -581,39 +592,100 @@ async function tryAutoSync(){
 }
 tryAutoSync();
 
-/* ===================== OPENAI SETTINGS (stored locally in the browser only) ===================== */
-const OPENAI_KEY_STORAGE = 'scrapDashboard_openaiKey';
-const OPENAI_MODEL_STORAGE = 'scrapDashboard_openaiModel';
-const OPENAI_DEFAULT_MODEL = 'gpt-5.6-luna';
+/* ===================== AI PROVIDER SETTINGS (stored locally in the browser only) ===================== */
+const AI_PROVIDER_STORAGE = 'scrapDashboard_aiProvider';
+const AI_KEY_STORAGE_PREFIX = 'scrapDashboard_aiKey_';
+const AI_MODEL_STORAGE_PREFIX = 'scrapDashboard_aiModel_';
 
-function loadOpenAiSettings(){
+const AI_PROVIDERS = {
+  openai: {
+    label: 'OpenAI', keyLabel: 'Tu OpenAI API Key', keyPlaceholder: 'sk-...',
+    defaultModel: 'gpt-5.6-luna',
+    hint: 'Requiere facturación activa en platform.openai.com (Settings → Billing). Sin saldo, la llamada falla.'
+  },
+  gemini: {
+    label: 'Gemini', keyLabel: 'Tu Gemini API Key', keyPlaceholder: 'AIza...',
+    defaultModel: 'gemini-3.6-flash',
+    hint: 'Gratis, sin tarjeta. Consíguela en aistudio.google.com → Get API key.'
+  },
+  groq: {
+    label: 'Groq', keyLabel: 'Tu Groq API Key', keyPlaceholder: 'gsk_...',
+    defaultModel: 'openai/gpt-oss-120b',
+    hint: 'Gratis, sin tarjeta. Consíguela en console.groq.com/keys.'
+  }
+};
+
+function currentAiProvider(){ return aiProviderInput.value; }
+
+function refreshAiProviderUI(){
+  const provider = currentAiProvider();
+  if(!provider){
+    aiKeyInput.disabled = true; aiModelInput.disabled = true;
+    aiKeyInput.value = ''; aiModelInput.value = '';
+    aiProviderHint.textContent = 'Sin proveedor elegido: las conclusiones se generan con el motor local.';
+    return;
+  }
+  const cfg = AI_PROVIDERS[provider];
+  aiKeyInput.disabled = false; aiModelInput.disabled = false;
+  aiKeyLabel.textContent = cfg.keyLabel;
+  aiKeyInput.placeholder = cfg.keyPlaceholder;
+  aiKeyInput.value = localStorage.getItem(AI_KEY_STORAGE_PREFIX + provider) || '';
+  aiModelInput.value = localStorage.getItem(AI_MODEL_STORAGE_PREFIX + provider) || cfg.defaultModel;
+  aiProviderHint.textContent = cfg.hint;
+}
+
+const DEPRECATED_MODEL_MIGRATIONS = {
+  'gemini-2.5-flash': 'gemini-3.6-flash',
+  'gemini-2.0-flash': 'gemini-3.6-flash',
+  'llama-3.3-70b-versatile': 'openai/gpt-oss-120b',
+  'llama-3.1-8b-instant': 'openai/gpt-oss-20b',
+  'gpt-5.6-luna': 'gpt-5.6-luna' // kept as-is; adjust here if OpenAI renames it
+};
+function migrateDeprecatedModels(){
+  Object.keys(AI_PROVIDERS).forEach(provider => {
+    const key = AI_MODEL_STORAGE_PREFIX + provider;
+    const saved = localStorage.getItem(key);
+    if(saved && DEPRECATED_MODEL_MIGRATIONS[saved] && DEPRECATED_MODEL_MIGRATIONS[saved] !== saved){
+      localStorage.setItem(key, DEPRECATED_MODEL_MIGRATIONS[saved]);
+    }
+  });
+}
+
+function loadAiSettings(){
   try{
-    const savedKey = localStorage.getItem(OPENAI_KEY_STORAGE);
-    const savedModel = localStorage.getItem(OPENAI_MODEL_STORAGE);
-    if(savedKey) openaiKeyInput.value = savedKey;
-    openaiModelInput.value = savedModel || OPENAI_DEFAULT_MODEL;
-    if(savedKey) openaiStatus.textContent = 'Clave guardada en este navegador. Modelo: ' + (savedModel || OPENAI_DEFAULT_MODEL);
+    migrateDeprecatedModels();
+    aiProviderInput.value = localStorage.getItem(AI_PROVIDER_STORAGE) || '';
+    refreshAiProviderUI();
   }catch(e){ console.warn('No se pudo leer la configuración guardada', e); }
 }
-loadOpenAiSettings();
+loadAiSettings();
+aiProviderInput.addEventListener('change', refreshAiProviderUI);
 
-openaiSaveBtn.addEventListener('click', () => {
-  const key = openaiKeyInput.value.trim();
-  const model = openaiModelInput.value.trim() || OPENAI_DEFAULT_MODEL;
+aiSaveBtn.addEventListener('click', () => {
+  const provider = currentAiProvider();
   try{
-    if(key) localStorage.setItem(OPENAI_KEY_STORAGE, key);
-    localStorage.setItem(OPENAI_MODEL_STORAGE, model);
-    openaiStatus.textContent = key ? 'Clave y modelo guardados en este navegador.' : 'Modelo guardado (sin clave — se usará el motor local).';
+    localStorage.setItem(AI_PROVIDER_STORAGE, provider);
+    if(provider){
+      const cfg = AI_PROVIDERS[provider];
+      const key = aiKeyInput.value.trim();
+      const model = aiModelInput.value.trim() || cfg.defaultModel;
+      if(key) localStorage.setItem(AI_KEY_STORAGE_PREFIX + provider, key);
+      localStorage.setItem(AI_MODEL_STORAGE_PREFIX + provider, model);
+      openaiStatus.textContent = key ? (cfg.label + ': clave y modelo guardados en este navegador.') : (cfg.label + ': modelo guardado (sin clave — se usará el motor local).');
+    } else {
+      openaiStatus.textContent = 'Sin proveedor — se usará siempre el motor local.';
+    }
     openaiStatus.className = 'status ok';
   }catch(e){
     openaiStatus.textContent = 'No se pudo guardar (el navegador bloqueó el almacenamiento local).';
     openaiStatus.className = 'status error';
   }
 });
-openaiClearBtn.addEventListener('click', () => {
-  try{ localStorage.removeItem(OPENAI_KEY_STORAGE); }catch(e){}
-  openaiKeyInput.value = '';
-  openaiStatus.textContent = 'Clave borrada de este navegador.';
+aiClearBtn.addEventListener('click', () => {
+  const provider = currentAiProvider();
+  if(provider){ try{ localStorage.removeItem(AI_KEY_STORAGE_PREFIX + provider); }catch(e){} }
+  aiKeyInput.value = '';
+  openaiStatus.textContent = provider ? ('Clave de ' + AI_PROVIDERS[provider].label + ' borrada de este navegador.') : 'Nada que borrar.';
   openaiStatus.className = 'status';
 });
 
@@ -1606,58 +1678,92 @@ async function generateReport(){
     '\\n\\nGenera la conclusión elaborada y los puntos a destacar siguiendo el formato indicado.';
 
   let usedAI = false, conclusion = '', points = [];
-  const openaiKey = (localStorage.getItem(OPENAI_KEY_STORAGE) || '').trim();
-  const openaiModel = (localStorage.getItem(OPENAI_MODEL_STORAGE) || OPENAI_DEFAULT_MODEL).trim();
+  const provider = localStorage.getItem(AI_PROVIDER_STORAGE) || '';
+  const providerKey = provider ? (localStorage.getItem(AI_KEY_STORAGE_PREFIX + provider) || '').trim() : '';
+  const providerModel = provider ? (localStorage.getItem(AI_MODEL_STORAGE_PREFIX + provider) || AI_PROVIDERS[provider].defaultModel).trim() : '';
+  const providerLabel = provider ? AI_PROVIDERS[provider].label : '';
 
   let aiErrorMessage = null;
 
-  if(!openaiKey){
+  if(!provider || !providerKey){
     const local = buildLocalConclusions();
     conclusion = local.conclusion; points = local.points;
   } else {
     try{
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + openaiKey
-        },
-        body: JSON.stringify({
-          model: openaiModel,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userPrompt }
-          ],
-          response_format: { type: "json_object" }
-        })
-      });
-      const data = await response.json();
-      if(data.error) throw new Error(data.error.message || 'Error de OpenAI');
-      const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-      if(!text) throw new Error('Respuesta vacía');
-      let clean = text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
-      const parsed = JSON.parse(clean);
+      const parsed = await callAIProvider(provider, providerKey, providerModel, userPrompt);
       if(!parsed.conclusion) throw new Error('Formato incompleto');
       conclusion = parsed.conclusion; points = parsed.points || [];
       usedAI = true;
     }catch(err){
-      console.warn('ChatGPT no disponible, generando localmente:', err);
+      console.warn(providerLabel + ' no disponible, generando localmente:', err);
       const isCorsLike = err instanceof TypeError || /Failed to fetch|NetworkError|CORS/i.test(err.message || '');
       aiErrorMessage = isCorsLike
-        ? '⚠ ChatGPT no respondió — el navegador bloqueó la conexión directa a OpenAI (típico de CORS, no es un problema de tu clave). Se usó el motor local.'
-        : '⚠ ChatGPT devolvió un error: ' + err.message + '. Se usó el motor local.';
+        ? '⚠ ' + providerLabel + ' no respondió — el navegador bloqueó la conexión directa (típico de CORS, no es un problema de tu clave). Se usó el motor local.'
+        : '⚠ ' + providerLabel + ' devolvió un error: ' + err.message + '. Se usó el motor local.';
       const local = buildLocalConclusions();
       conclusion = local.conclusion; points = local.points;
     }
   }
 
-  currentReport = { month: label, conclusion, points, customNotes: '', usedAI, criticalDaysText: buildCriticalDaysNarrative(label, computeCriticalDays(main)) };
+  currentReport = { month: label, conclusion, points, customNotes: '', usedAI, usedProvider: usedAI ? providerLabel : null, criticalDaysText: buildCriticalDaysNarrative(label, computeCriticalDays(main)) };
   renderPreview(currentReport);
   populateEditFields(currentReport);
   downloadJpgBtn.disabled = false;
   if(aiErrorMessage) setStatus(aiErrorMessage, 'error');
-  else setStatus(usedAI ? 'Conclusiones generadas con ChatGPT. Puedes editarlas antes de descargar.' : 'Conclusiones generadas (motor local). Puedes editarlas antes de descargar.', 'ok');
+  else setStatus(usedAI ? ('Conclusiones generadas con ' + providerLabel + '. Puedes editarlas antes de descargar.') : 'Conclusiones generadas (motor local). Puedes editarlas antes de descargar.', 'ok');
   generateBtn.disabled = false;
+}
+
+// Dispatches to the right API shape per provider. OpenAI and Groq share the same
+// (OpenAI-compatible) request/response format; Gemini has its own.
+async function callAIProvider(provider, key, model, userPrompt){
+  function extractJson(text){
+    if(!text) throw new Error('Respuesta vacía');
+    const clean = text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    return JSON.parse(clean);
+  }
+
+  if(provider === 'openai' || provider === 'groq'){
+    const url = provider === 'openai'
+      ? 'https://api.openai.com/v1/chat/completions'
+      : 'https://api.groq.com/openai/v1/chat/completions';
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: { type: "json_object" }
+      })
+    });
+    const data = await response.json();
+    if(data.error) throw new Error(data.error.message || ('Error de ' + provider));
+    const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    return extractJson(text);
+  }
+
+  if(provider === 'gemini'){
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        generationConfig: { responseMimeType: "application/json" }
+      })
+    });
+    const data = await response.json();
+    if(data.error) throw new Error(data.error.message || 'Error de Gemini');
+    const cand = data.candidates && data.candidates[0];
+    const text = cand && cand.content && cand.content.parts && cand.content.parts[0] && cand.content.parts[0].text;
+    return extractJson(text);
+  }
+
+  throw new Error('Proveedor desconocido');
 }
 
 function populateEditFields(r){
@@ -1687,7 +1793,7 @@ function renderPreview(r){
   previewCard.classList.remove('hidden');
   const pointsLis = (r.points || []).map(p => '<li>' + p + '</li>').join('');
   const badge = r.usedAI
-    ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#3F7A5622;color:#3F7A56;margin-bottom:10px;">🤖 Generado con ChatGPT</span>'
+    ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#3F7A5622;color:#3F7A56;margin-bottom:10px;">🤖 Generado con ' + (r.usedProvider || 'IA') + '</span>'
     : '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#6B7A6E22;color:#6B7A6E;margin-bottom:10px;">⚙️ Generado con el motor local</span>';
   previewContent.innerHTML =
     badge + '<br/>' +
