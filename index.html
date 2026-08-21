@@ -257,6 +257,8 @@
           <textarea id="editConclusion" rows="5"></textarea>
           <label style="margin-top:12px;">Puntos a destacar (uno por línea, editable)</label>
           <textarea id="editPoints" rows="5"></textarea>
+          <label style="margin-top:12px;">Días críticos (una frase por línea, editable)</label>
+          <textarea id="editCriticalDays" rows="3"></textarea>
           <label style="margin-top:12px;">Notas y justificaciones adicionales (opcional)</label>
           <textarea id="editNotes" rows="2" placeholder="Ej. el aumento en ROJO se debe a un pedido especial de cliente X..."></textarea>
           <div class="btn-row">
@@ -336,6 +338,7 @@ const previewContent = document.getElementById('previewContent');
 const editCard = document.getElementById('editCard');
 const editConclusion = document.getElementById('editConclusion');
 const editPoints = document.getElementById('editPoints');
+const editCriticalDays = document.getElementById('editCriticalDays');
 const editNotes = document.getElementById('editNotes');
 const downloadJpgBtn = document.getElementById('downloadJpgBtn');
 
@@ -659,7 +662,13 @@ function loadAiSettings(){
   }catch(e){ console.warn('No se pudo leer la configuración guardada', e); }
 }
 loadAiSettings();
-aiProviderInput.addEventListener('change', refreshAiProviderUI);
+aiProviderInput.addEventListener('change', () => {
+  // Persist the provider choice immediately — generateReport() reads this directly,
+  // so leaving it unsaved (only updating the visible dropdown) caused the old provider
+  // to keep running even after switching to "Ninguno" in the UI.
+  try{ localStorage.setItem(AI_PROVIDER_STORAGE, aiProviderInput.value); }catch(e){}
+  refreshAiProviderUI();
+});
 
 aiSaveBtn.addEventListener('click', () => {
   const provider = currentAiProvider();
@@ -1769,6 +1778,7 @@ async function callAIProvider(provider, key, model, userPrompt){
 function populateEditFields(r){
   editConclusion.value = r.conclusion || '';
   editPoints.value = (r.points || []).join('\n');
+  editCriticalDays.value = (r.criticalDaysText || []).join('\n');
   editNotes.value = r.customNotes || '';
   editCard.classList.remove('hidden');
 }
@@ -1777,10 +1787,11 @@ function syncEditsToReport(){
   if(!currentReport) return;
   currentReport.conclusion = editConclusion.value;
   currentReport.points = editPoints.value.split('\n').map(s => s.trim()).filter(Boolean);
+  currentReport.criticalDaysText = editCriticalDays.value.split('\n').map(s => s.trim()).filter(Boolean);
   currentReport.customNotes = editNotes.value.trim();
   renderPreview(currentReport);
 }
-[editConclusion, editPoints, editNotes].forEach(el => el.addEventListener('input', syncEditsToReport));
+[editConclusion, editPoints, editCriticalDays, editNotes].forEach(el => el.addEventListener('input', syncEditsToReport));
 
 function criticalDaysHtml(sentences){
   if(!sentences || !sentences.length) return '';
@@ -1854,7 +1865,7 @@ async function ensureH2C(){
 async function downloadImage(){
   if(!currentReport) return;
   syncEditsToReport();
-  const liveReport = { ...currentReport, conclusion: editConclusion.value, points: editPoints.value.split('\n').map(s=>s.trim()).filter(Boolean), customNotes: editNotes.value.trim() };
+  const liveReport = { ...currentReport, conclusion: editConclusion.value, points: editPoints.value.split('\n').map(s=>s.trim()).filter(Boolean), criticalDaysText: editCriticalDays.value.split('\n').map(s=>s.trim()).filter(Boolean), customNotes: editNotes.value.trim() };
   downloadJpgBtn.disabled = true;
   const ok = await ensureH2C();
   if(!ok){
