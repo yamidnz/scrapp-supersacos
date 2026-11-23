@@ -143,13 +143,14 @@
         <input type="date" id="entryFecha" style="max-width:200px;" />
       </div>
       <div class="card">
-        <label>Registrar scrap — agrega una fila por cada código/color que quieras reportar</label>
+        <label>Registrar scrap — agrega una fila por cada categoría/subcategoría que quieras reportar. Elige la categoría y escribe la subcategoría (te sugerimos las ya usadas; si no existe, escríbela libremente)</label>
         <p style="font-size:12px;color:var(--muted);margin:4px 0 10px;">Todos los campos son opcionales, llena solo lo que aplique. Los valores de color son los kg de esa fila. Se guarda con tu usuario y la fecha actual.</p>
         <div style="overflow-x:auto;">
-          <table id="operatorEntryTable" style="width:100%;border-collapse:collapse;font-size:13px;min-width:900px;">
+          <table id="operatorEntryTable" style="width:100%;border-collapse:collapse;font-size:13px;min-width:1050px;">
             <thead>
               <tr style="color:var(--muted);text-transform:uppercase;font-size:10.5px;letter-spacing:.04em;">
-                <th style="text-align:left;padding:6px 6px;">Código + Descripción</th>
+                <th style="text-align:left;padding:6px 6px;">Categoría</th>
+                <th style="text-align:left;padding:6px 6px;">Subcategoría</th>
                 <th style="text-align:right;padding:6px 4px;">Blanco</th>
                 <th style="text-align:right;padding:6px 4px;">Negro</th>
                 <th style="text-align:right;padding:6px 4px;">Tinta</th>
@@ -186,6 +187,7 @@
         <button data-tab="cargar" class="active">Cargar datos</button>
         <button data-tab="dashboard">Dashboard</button>
         <button data-tab="editarRegistros">Historial de operarios</button>
+        <button data-tab="subcategorias">Subcategorías</button>
         <button data-tab="usuarios">Usuarios</button>
       </div>
 
@@ -388,6 +390,30 @@
     </div>
   </div>
 
+  <div id="tabSubcategorias" class="hidden">
+    <div class="card">
+      <label>Subcategorías escritas por los operarios — estandarizar</label>
+      <p style="font-size:12px;color:var(--muted);margin:4px 0 10px;">Aquí ves todo lo que se ha escrito. Para unificar variantes, escribe o elige el nombre estándar en la fila y pulsa Aplicar: se corrigen los registros anteriores y, de ahí en adelante, lo que el operario escriba así se guardará con el nombre estándar.</p>
+      <div class="row" style="margin-bottom:10px;">
+        <div><label>Categoría</label>
+          <select id="subcatFiltro"><option>CORTE</option><option>MERMA</option><option>PLANTA</option></select>
+        </div>
+      </div>
+      <div id="subcatAdminBox" style="overflow-x:auto;"></div>
+    </div>
+    <div class="card">
+      <label>Agregar una subcategoría estándar a mano</label>
+      <div class="row">
+        <div><label>Categoría</label>
+          <select id="subcatNewCat"><option>CORTE</option><option>MERMA</option><option>PLANTA</option></select>
+        </div>
+        <div><label>Nombre</label><input type="text" id="subcatNewName" autocomplete="off" style="text-transform:uppercase;" /></div>
+      </div>
+      <div class="btn-row"><button id="subcatAddBtn" class="btn btn-primary">Agregar</button></div>
+      <div id="subcatAddStatus" class="status"></div>
+    </div>
+  </div>
+
   <div id="tabUsuarios" class="hidden">
     <div class="card">
       <label>Usuarios del sistema</label>
@@ -415,7 +441,7 @@
 <script>
 /* ===================== TABS ===================== */
 const tabbar = document.getElementById('tabbar');
-const tabSections = { cargar: document.getElementById('tabCargar'), dashboard: document.getElementById('tabDashboard'), editarRegistros: document.getElementById('tabEditarRegistros'), usuarios: document.getElementById('tabUsuarios') };
+const tabSections = { cargar: document.getElementById('tabCargar'), dashboard: document.getElementById('tabDashboard'), editarRegistros: document.getElementById('tabEditarRegistros'), subcategorias: document.getElementById('tabSubcategorias'), usuarios: document.getElementById('tabUsuarios') };
 tabbar.querySelectorAll('button').forEach(btn => {
   btn.addEventListener('click', () => {
     tabbar.querySelectorAll('button').forEach(b => b.classList.remove('active'));
@@ -423,6 +449,7 @@ tabbar.querySelectorAll('button').forEach(btn => {
     Object.entries(tabSections).forEach(([k,el]) => el.classList.toggle('hidden', k !== btn.dataset.tab));
     if(btn.dataset.tab === 'dashboard') renderDashboard();
     if(btn.dataset.tab === 'editarRegistros') renderAdminHistorial();
+    if(btn.dataset.tab === 'subcategorias') renderSubcategorias();
     if(btn.dataset.tab === 'usuarios') renderUsuarios();
   });
 });
@@ -2331,6 +2358,7 @@ function enterApp(){
   sessionUserLabel.textContent = s.usuario + ' (' + s.rol + ')';
   const isAdmin = s.rol === 'admin';
   adminTopTabBtn.classList.toggle('hidden', !isAdmin);
+  loadSubcats();
   topTabbar.querySelector('[data-toptab="' + (isAdmin ? 'admin' : 'registro') + '"]').click();
 }
 
@@ -2371,9 +2399,33 @@ saveEntryBtn.insertAdjacentElement('afterend', entryPreviewBox);
 const operatorHistorialBox = document.getElementById('operatorHistorialBox');
 const adminHistorialBox = document.getElementById('adminHistorialBox');
 
+/* ===== Categoría + subcategoría libre (con aprendizaje) ===== */
+const CATEGORIAS = ['CORTE','MERMA','PLANTA'];
+let subcatRows = [];
+function normSub(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,''); }
+function cleanSub(s){ return String(s||'').trim().replace(/\s+/g,' ').toUpperCase(); }
+function subcatSuggestions(cat){
+  const m = {};
+  subcatRows.filter(r => r.categoria === cat).forEach(r => { const n = r.estandar || r.nombre; m[n] = (m[n]||0) + r.veces; });
+  return Object.keys(m).sort((a,b) => (m[b]-m[a]) || a.localeCompare(b));
+}
+function isNewSubcat(cat, sub){
+  const n = normSub(sub);
+  return !subcatRows.some(r => r.categoria === cat && (normSub(r.nombre) === n || normSub(r.estandar) === n));
+}
+function refreshDatalists(){
+  let box = document.getElementById('subcatLists');
+  if(!box){ box = document.createElement('div'); box.id = 'subcatLists'; box.style.display = 'none'; document.body.appendChild(box); }
+  box.innerHTML = CATEGORIAS.map(c => '<datalist id="dl_'+c+'">' + subcatSuggestions(c).map(n => '<option value="'+esc(n)+'"></option>').join('') + '</datalist>').join('');
+}
+async function loadSubcats(){
+  try{ const r = await apiCall('getSubcategorias'); subcatRows = r.subcategorias || []; }catch(e){ subcatRows = []; }
+  refreshDatalists();
+}
+
 let pendingRows = [];
 function newPendingRow(){
-  const row = { codigoDescripcion:'' };
+  const row = { categoria:'', subcategoria:'' };
   COLOR_FIELDS.forEach(c => row[c] = '');
   return row;
 }
@@ -2382,14 +2434,21 @@ function renderEntryTable(){
     const colorCells = COLOR_FIELDS.map(c =>
       '<td style="padding:4px;"><input type="number" min="0" step="any" data-idx="'+idx+'" data-field="'+c+'" value="'+esc(row[c])+'" style="width:70px;padding:6px;font-size:12.5px;" /></td>'
     ).join('');
+    const catOpts = '<option value="">Elige…</option>' + CATEGORIAS.map(c => '<option value="'+c+'"'+(row.categoria === c ? ' selected' : '')+'>'+c+'</option>').join('');
     return '<tr>' +
-      '<td style="padding:4px;"><input type="text" data-idx="'+idx+'" data-field="codigoDescripcion" value="'+esc(row.codigoDescripcion)+'" placeholder="Ej. 1234 - Saco 50kg" style="width:260px;padding:6px;font-size:12.5px;" /></td>' +
+      '<td style="padding:4px;"><select data-idx="'+idx+'" data-field="categoria" style="width:115px;padding:6px;font-size:12.5px;">'+catOpts+'</select></td>' +
+      '<td style="padding:4px;"><input type="text" data-idx="'+idx+'" data-field="subcategoria" value="'+esc(row.subcategoria)+'" ' +
+        (row.categoria ? 'list="dl_'+row.categoria+'" placeholder="Elige o escribe…"' : 'disabled placeholder="Primero elige la categoría"') +
+        ' autocomplete="off" style="width:240px;padding:6px;font-size:12.5px;text-transform:uppercase;" /></td>' +
       colorCells +
       '<td style="padding:4px;text-align:center;"><span data-idx="'+idx+'" class="rmRow" style="cursor:pointer;color:var(--red);font-weight:700;">×</span></td>' +
     '</tr>';
   }).join('');
   operatorEntryBody.querySelectorAll('input').forEach(inp => {
     inp.addEventListener('input', (e) => { pendingRows[Number(e.target.dataset.idx)][e.target.dataset.field] = e.target.value; });
+  });
+  operatorEntryBody.querySelectorAll('select').forEach(sel => {
+    sel.addEventListener('change', (e) => { pendingRows[Number(e.target.dataset.idx)].categoria = e.target.value; renderEntryTable(); });
   });
   operatorEntryBody.querySelectorAll('.rmRow').forEach(span => {
     span.addEventListener('click', (e) => { pendingRows.splice(Number(e.target.dataset.idx), 1); renderEntryTable(); });
@@ -2400,12 +2459,21 @@ addEntryRowBtn.addEventListener('click', addEntryRow);
 addEntryRow();
 
 function collectFilas(){
-  return pendingRows.filter(row => row.codigoDescripcion.trim() || COLOR_FIELDS.some(c => row[c] !== '' && Number(row[c]) > 0))
-    .map(row => {
-      const o = { codigoDescripcion: row.codigoDescripcion.trim(), fecha: entryFecha.value };
-      COLOR_FIELDS.forEach(c => { o[c] = row[c] === '' ? '' : Number(row[c]); });
-      return o;
-    });
+  const filas = [];
+  for(let i = 0; i < pendingRows.length; i++){
+    const row = pendingRows[i];
+    const hasKg = COLOR_FIELDS.some(c => row[c] !== '' && Number(row[c]) > 0);
+    const sub = cleanSub(row.subcategoria);
+    if(!row.categoria && !sub && !hasKg) continue;
+    if(!row.categoria) throw new Error('Fila ' + (i+1) + ': elige la categoría.');
+    if(!sub) throw new Error('Fila ' + (i+1) + ': escribe la subcategoría.');
+    if(!hasKg) throw new Error('Fila ' + (i+1) + ': escribe los kg de al menos un color.');
+    const o = { categoria: row.categoria, subcategoria: sub, codigoDescripcion: row.categoria + ' — ' + sub,
+                esNueva: isNewSubcat(row.categoria, sub), fecha: entryFecha.value };
+    COLOR_FIELDS.forEach(c => { o[c] = row[c] === '' ? '' : Number(row[c]); });
+    filas.push(o);
+  }
+  return filas;
 }
 
 async function commitFilas(filas){
@@ -2417,6 +2485,7 @@ async function commitFilas(filas){
     addEntryRow();
     entryPreviewBox.innerHTML = '';
     operatorEntryStatus.textContent = filas.length + ' fila(s) guardada(s) correctamente.';
+    loadSubcats();
     operatorEntryStatus.className = 'status ok';
   }catch(e){
     operatorEntryStatus.textContent = 'No se pudo guardar: ' + e.message;
@@ -2427,7 +2496,8 @@ async function commitFilas(filas){
 }
 
 saveEntryBtn.addEventListener('click', () => {
-  const filas = collectFilas();
+  let filas;
+  try{ filas = collectFilas(); }catch(err){ operatorEntryStatus.textContent = err.message; operatorEntryStatus.className = 'status error'; return; }
   if(!filas.length){
     operatorEntryStatus.textContent = 'Llena al menos un dato en alguna fila antes de guardar.';
     operatorEntryStatus.className = 'status error';
@@ -2441,13 +2511,13 @@ saveEntryBtn.addEventListener('click', () => {
   operatorEntryStatus.textContent = '';
   const colHeaders = COLOR_FIELDS.map(c => c.charAt(0).toUpperCase()+c.slice(1));
   const theadHtml = '<tr style="color:var(--muted);text-transform:uppercase;font-size:10.5px;letter-spacing:.04em;">' +
-    '<th style="text-align:left;padding:6px 8px;">Código + Descripción</th>' +
+    '<th style="text-align:left;padding:6px 8px;">Categoría — Subcategoría</th>' +
     colHeaders.map(h => '<th style="text-align:right;padding:6px 8px;">'+h+'</th>').join('') +
     '<th style="text-align:right;padding:6px 8px;">Total</th></tr>';
   const rowsHtml = filas.map(f => {
     const colorCells = COLOR_FIELDS.map(c => '<td style="padding:6px 8px;font-family:IBM Plex Mono,monospace;text-align:right;">' + (f[c] === '' ? '—' : esc(f[c])) + '</td>').join('');
     return '<tr style="border-bottom:1px solid var(--track);">' +
-      '<td style="padding:6px 8px;">' + esc(f.codigoDescripcion || '—') + '</td>' +
+      '<td style="padding:6px 8px;">' + esc(f.codigoDescripcion || '—') + (f.esNueva ? ' <span style="font-size:10px;color:var(--amber);font-weight:700;">NUEVA</span>' : '') + '</td>' +
       colorCells +
       '<td style="padding:6px 8px;font-family:IBM Plex Mono,monospace;text-align:right;font-weight:600;">' + fmtKg(rowTotal(f)) + '</td></tr>';
   }).join('');
@@ -2477,7 +2547,7 @@ function formatEntryDate(iso){
 async function fetchRegistros(){
   const r = await apiCall('getRegistros');
   return r.registros.map(x => {
-    const o = { id: x.ID, fechaRegistro: x.FechaRegistro, fechaScrap: x.FechaScrap || x.FechaRegistro, operador: x.Usuario, codigoDescripcion: x.CodigoDescripcion || [x.Codigo, x.Descripcion].filter(Boolean).join(' — '),
+    const o = { id: x.ID, fechaRegistro: x.FechaRegistro, fechaScrap: x.FechaScrap || x.FechaRegistro, operador: x.Usuario, categoria: x.Categoria || '', subcategoria: x.Subcategoria || '', codigoDescripcion: x.CodigoDescripcion || [x.Codigo, x.Descripcion].filter(Boolean).join(' — '),
       editado: x.Editado === true || String(x.Editado).toUpperCase() === 'TRUE' };
     COLOR_FIELDS.forEach(c => { o[c] = x[c.charAt(0).toUpperCase() + c.slice(1)]; });
     return o;
@@ -2530,7 +2600,7 @@ async function downloadDayImage(prefix, log){
   const colHeaders = COLOR_FIELDS.map(c => c.charAt(0).toUpperCase()+c.slice(1));
   const thS = 'padding:8px 10px;background:#3F7A56;color:#fff;';
   const theadHtml = '<tr><th style="text-align:left;'+thS+'">Operario</th>' +
-    '<th style="text-align:left;'+thS+'">Código + Descripción</th>' +
+    '<th style="text-align:left;'+thS+'">Categoría — Subcategoría</th>' +
     colHeaders.map(h => '<th style="text-align:right;'+thS+'">'+h+'</th>').join('') +
     '<th style="text-align:right;'+thS+'">Total</th></tr>';
   const rowsHtml = dayRows.map((r,i) => {
@@ -2582,7 +2652,7 @@ function applyDateFilter(log, prefix){
 function historialTableHtml(log, editable){
   if(!log.length) return '<p style="font-size:13px;color:var(--muted);">Sin registros para este filtro.</p>';
   const sorted = [...log].sort((a,b) => new Date(b.fechaScrap) - new Date(a.fechaScrap));
-  const lead = editable ? ['Fecha scrap','Fecha de registro','Operario','Código + Descripción'] : ['Fecha','Operario','Código + Descripción'];
+  const lead = editable ? ['Fecha scrap','Fecha de registro','Operario','Categoría — Subcategoría'] : ['Fecha','Operario','Categoría — Subcategoría'];
   const headerCols = lead.concat(COLOR_FIELDS.map(c => c.charAt(0).toUpperCase() + c.slice(1)), ['Total']);
   if(editable) headerCols.push('');
   const numCell = 'padding:6px 8px;font-family:IBM Plex Mono,monospace;text-align:right;';
@@ -2666,8 +2736,12 @@ function wireAdminHistorialActions(){
     const r = __adminLog.find(x => x.id === btn.dataset.id);
     if(!r) return;
     const nuevaFechaScrap = prompt('Fecha del scrap (AAAA-MM-DD):', dateOnly(r.fechaScrap)); if(nuevaFechaScrap === null) return;
-    const nuevoCodDesc = prompt('Código + Descripción:', r.codigoDescripcion || ''); if(nuevoCodDesc === null) return;
-    const campos = { FechaScrap: nuevaFechaScrap.trim(), CodigoDescripcion: nuevoCodDesc.trim() };
+    const nuevaCat = prompt('Categoría (CORTE, MERMA o PLANTA):', r.categoria || ''); if(nuevaCat === null) return;
+    const nuevaSub = prompt('Subcategoría:', r.subcategoria || ''); if(nuevaSub === null) return;
+    const catU = nuevaCat.trim().toUpperCase();
+    if(CATEGORIAS.indexOf(catU) === -1){ alert('La categoría debe ser CORTE, MERMA o PLANTA. No se aplicó ningún cambio.'); return; }
+    if(!cleanSub(nuevaSub)){ alert('Falta la subcategoría. No se aplicó ningún cambio.'); return; }
+    const campos = { FechaScrap: nuevaFechaScrap.trim(), Categoria: catU, Subcategoria: cleanSub(nuevaSub) };
     for(const c of COLOR_FIELDS){
       const label = c.charAt(0).toUpperCase() + c.slice(1);
       const val = prompt('Kg de ' + label + ' (vacío = sin dato):', (r[c] === '' || r[c] === null || r[c] === undefined) ? '' : String(r[c]));
@@ -2691,6 +2765,78 @@ async function renderAdminHistorial(){
     draw();
   }catch(e){ adminHistorialBox.innerHTML = '<p style="font-size:13px;color:var(--red);">' + esc(e.message) + '</p>'; }
 }
+
+/* ===== Subcategorías: estandarización (solo admin) ===== */
+const subcatFiltro = document.getElementById('subcatFiltro');
+const subcatNewCat = document.getElementById('subcatNewCat');
+const subcatNewName = document.getElementById('subcatNewName');
+const subcatAddBtn = document.getElementById('subcatAddBtn');
+const subcatAddStatus = document.getElementById('subcatAddStatus');
+
+async function renderSubcategorias(){
+  const box = document.getElementById('subcatAdminBox');
+  box.innerHTML = '<p style="font-size:13px;color:var(--muted);">Cargando...</p>';
+  await loadSubcats();
+  const cat = subcatFiltro.value;
+  const rows = subcatRows.filter(r => r.categoria === cat).sort((a,b) => (b.veces - a.veces) || a.nombre.localeCompare(b.nombre));
+  if(!rows.length){ box.innerHTML = '<p style="font-size:13px;color:var(--muted);">Aún no hay subcategorías en ' + esc(cat) + '.</p>'; return; }
+  const dlId = 'dlAdmin_' + cat;
+  const opts = subcatSuggestions(cat).map(n => '<option value="'+esc(n)+'"></option>').join('');
+  const body = rows.map((r, i) => {
+    const mapped = r.estandar && normSub(r.estandar) !== normSub(r.nombre);
+    return '<tr style="border-bottom:1px solid var(--track);">' +
+      '<td style="padding:6px 8px;">' + esc(r.nombre) + (mapped ? ' <span style="font-size:10px;color:var(--muted);">(unificada)</span>' : '') + '</td>' +
+      '<td style="padding:6px 8px;font-family:IBM Plex Mono,monospace;text-align:right;">' + r.veces + '</td>' +
+      '<td style="padding:4px 8px;"><input type="text" list="'+dlId+'" id="subcatIn_'+i+'" value="'+esc(r.estandar || r.nombre)+'" autocomplete="off" style="width:280px;padding:6px;font-size:12.5px;text-transform:uppercase;" /></td>' +
+      '<td style="padding:4px 8px;"><button class="btn subcatApplyBtn" data-i="'+i+'" style="padding:4px 10px;font-size:11px;background:var(--track);color:var(--ink);margin-right:4px;">Aplicar</button>' +
+        '<button class="btn subcatDelBtn" data-i="'+i+'" style="padding:4px 10px;font-size:11px;background:#B84A3E22;color:var(--red);">Eliminar</button></td>' +
+    '</tr>';
+  }).join('');
+  box.innerHTML = '<datalist id="'+dlId+'">'+opts+'</datalist>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px;">' +
+    '<thead><tr style="color:var(--muted);text-transform:uppercase;font-size:10.5px;letter-spacing:.04em;">' +
+    '<th style="text-align:left;padding:6px 8px;">Escrito por operarios</th><th style="text-align:right;padding:6px 8px;">Veces</th>' +
+    '<th style="text-align:left;padding:6px 8px;">Nombre estándar</th><th></th></tr></thead><tbody>' + body + '</tbody></table>';
+  wireSubcatDelete(box, rows, cat);
+  box.querySelectorAll('.subcatApplyBtn').forEach(btn => btn.addEventListener('click', async () => {
+    const r = rows[Number(btn.dataset.i)];
+    const nuevo = cleanSub(document.getElementById('subcatIn_' + btn.dataset.i).value);
+    const actual = r.estandar || r.nombre;
+    if(!nuevo){ alert('Escribe el nombre estándar.'); return; }
+    if(nuevo === actual){ alert('Ya tiene ese nombre estándar.'); return; }
+    if(!confirm('En ' + cat + ': unificar "' + actual + '" → "' + nuevo + '".\nSe corregirán también los registros anteriores. ¿Continuar?')) return;
+    try{
+      const res = await apiCall('estandarizarSubcategoria', { categoria: cat, desde: actual, hacia: nuevo });
+      alert('Listo. Registros corregidos: ' + res.actualizados);
+      renderSubcategorias();
+    }catch(e){ alert(e.message); }
+  }));
+}
+subcatFiltro.addEventListener('change', renderSubcategorias);
+function wireSubcatDelete(box, rows, cat){
+  box.querySelectorAll('.subcatDelBtn').forEach(btn => btn.addEventListener('click', async () => {
+    const r = rows[Number(btn.dataset.i)];
+    if(!confirm('En ' + cat + ': eliminar "' + r.nombre + '" de la lista.\nLos registros ya guardados no se modifican. ¿Continuar?')) return;
+    try{
+      const res = await apiCall('eliminarSubcategoria', { categoria: cat, nombre: r.nombre });
+      alert('Eliminada.' + (res.enRegistros ? ' Ojo: ' + res.enRegistros + ' registro(s) guardados la usan todavía (no se tocaron).' : ''));
+      renderSubcategorias();
+    }catch(e){ alert(e.message); }
+  }));
+}
+subcatAddBtn.addEventListener('click', async () => {
+  const nombre = cleanSub(subcatNewName.value);
+  if(!nombre){ subcatAddStatus.textContent = 'Escribe el nombre.'; subcatAddStatus.className = 'status error'; return; }
+  subcatAddBtn.disabled = true;
+  try{
+    await apiCall('addSubcategoria', { categoria: subcatNewCat.value, nombre: nombre });
+    subcatNewName.value = '';
+    subcatAddStatus.textContent = 'Agregada a ' + subcatNewCat.value + '.'; subcatAddStatus.className = 'status ok';
+    subcatFiltro.value = subcatNewCat.value;
+    renderSubcategorias();
+  }catch(e){ subcatAddStatus.textContent = e.message; subcatAddStatus.className = 'status error'; }
+  finally{ subcatAddBtn.disabled = false; }
+});
 
 /* ===== Gestión de usuarios (solo admin) ===== */
 const usuariosBox = document.getElementById('usuariosBox');
